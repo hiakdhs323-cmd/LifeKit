@@ -1,0 +1,1656 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>LifeKit - 토스 스타일 만능 실생활 툴킷 & 전국 길찾기</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        toss: {
+                            blue: '#3182F6',
+                            lightBlue: '#E8F3FF',
+                            darkBlue: '#1B64DA',
+                            bg: '#F2F4F6',
+                            darkBg: '#101013',
+                            card: '#FFFFFF',
+                            darkCard: '#1C1C1E',
+                            text: '#191F28',
+                            darkText: '#F9FAFB',
+                            subtext: '#8B95A1',
+                            darkSubtext: '#6B7684',
+                            red: '#F04452',
+                            green: '#20C997',
+                            yellow: '#FFB300',
+                            purple: '#8E54E9'
+                        }
+                    },
+                    borderRadius: {
+                        'toss': '24px',
+                        'toss-sm': '16px'
+                    },
+                    boxShadow: {
+                        'toss': '0 4px 20px rgba(0, 0, 0, 0.04)',
+                        'toss-lg': '0 10px 30px rgba(0, 0, 0, 0.08)'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Leaflet CSS & JS for OpenStreetMap Interactive Engine -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+    <!-- Google Inter Font -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            overflow: hidden;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 0px;
+            height: 0px;
+            background: transparent;
+        }
+
+        .leaflet-container { font-family: inherit; z-index: 1; }
+        .leaflet-control-zoom {
+            border: none !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+            border-radius: 14px !important;
+            overflow: hidden;
+            margin-right: 16px !important;
+            margin-bottom: 24px !important;
+        }
+        .leaflet-control-zoom a {
+            background-color: #ffffff !important;
+            color: #191F28 !important;
+            border-bottom: 1px solid #F2F4F6 !important;
+            width: 36px !important;
+            height: 36px !important;
+            line-height: 36px !important;
+        }
+        .dark .leaflet-control-zoom a {
+            background-color: #1C1C1E !important;
+            color: #F9FAFB !important;
+            border-bottom: 1px solid #2C2C2E !important;
+        }
+
+        :root {
+            --sat: env(safe-area-inset-top);
+            --sab: env(safe-area-inset-bottom);
+        }
+
+        /* Immersive GPS Navigation Mode Styles */
+        body.nav-active header { display: none !important; }
+        body.nav-active nav { display: none !important; }
+        body.nav-active main { padding: 0 !important; max-width: 100% !important; }
+        body.nav-active #view-map { height: 100vh !important; gap: 0 !important; }
+        body.nav-active .map-ui-panel { display: none !important; }
+        body.nav-active #routeResult { display: none !important; }
+        body.nav-active .leaflet-control-zoom { display: none !important; }
+        
+        .pulse-circle {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(49, 130, 246, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 16px rgba(49, 130, 246, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(49, 130, 246, 0); }
+        }
+
+        .getoff-alert-pulse {
+            animation: alertPulse 1s infinite alternate;
+        }
+        @keyframes alertPulse {
+            0% { transform: scale(1); background-color: rgba(240, 68, 82, 0.95); }
+            100% { transform: scale(1.02); background-color: rgba(225, 29, 72, 1); }
+        }
+
+        .leaflet-fade-anim { transition: opacity 0.2s ease-in-out; }
+
+        /* WebView Fullscreen Modal Transition */
+        .webview-modal {
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+    </style>
+</head>
+<body class="bg-toss-bg dark:bg-toss-darkBg text-toss-text dark:text-toss-darkText h-screen flex flex-col antialiased transition-colors duration-200">
+
+    <div id="app" class="max-w-md w-full mx-auto h-full flex flex-col bg-toss-bg dark:bg-toss-darkBg relative shadow-2xl overflow-hidden">
+        
+        <!-- App Top Header -->
+        <header class="shrink-0 sticky top-0 z-40 bg-toss-bg/90 dark:bg-toss-darkBg/90 backdrop-blur-md px-5 pt-[calc(var(--sat)+12px)] pb-3 flex justify-between items-center transition-colors">
+            <div class="flex items-center gap-2 cursor-pointer" onclick="switchTab('home')">
+                <div class="w-8 h-8 rounded-full bg-toss-blue text-white flex items-center justify-center font-black text-lg shadow-sm">L</div>
+                <span class="font-extrabold text-[19px] tracking-tight">LifeKit</span>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <button onclick="openWebViewModal('https://m.map.naver.com')" title="전국 지도 웹뷰" class="text-xs font-bold bg-toss-lightBlue dark:bg-toss-blue/20 text-toss-blue px-3 py-1.5 rounded-full flex items-center gap-1 active:scale-95 transition-transform">
+                    <i class="fa-solid fa-earth-asia"></i> 웹뷰 전국지도
+                </button>
+                <button onclick="toggleDarkMode()" class="w-9 h-9 rounded-full bg-toss-card dark:bg-toss-darkCard shadow-sm flex items-center justify-center text-toss-subtext dark:text-toss-darkSubtext active:scale-95 transition-transform">
+                    <i id="themeIcon" class="fa-solid fa-moon text-base"></i>
+                </button>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-y-auto px-5 pb-24 pt-1 flex flex-col gap-4 relative scroll-smooth">
+
+            <!-- VIEW: HOME DASHBOARD -->
+            <section id="view-home" class="view-panel flex flex-col gap-4">
+                <!-- Banner Card -->
+                <div class="bg-toss-card dark:bg-toss-darkCard p-6 rounded-toss shadow-toss relative overflow-hidden mt-1">
+                    <div class="z-10 relative">
+                        <span class="inline-block px-3 py-1 bg-toss-lightBlue dark:bg-toss-blue/20 text-toss-blue font-bold text-[12px] rounded-full mb-2.5">2026 통합 실생활 툴킷</span>
+                        <h2 class="text-[22px] font-bold leading-tight mb-1">일상에 필요한 모든 기능,<br><span class="text-toss-blue">LifeKit</span> 하나로 끝내세요</h2>
+                        <p class="text-[13px] text-toss-subtext dark:text-toss-darkSubtext font-medium mt-1">대중교통 하차알람 & 스마트 실생활 계산기</p>
+                    </div>
+                    <div class="absolute -right-4 -bottom-4 text-[100px] opacity-10 pointer-events-none select-none">📍</div>
+                </div>
+
+                <!-- Main Tools Grid -->
+                <div class="grid grid-cols-2 gap-3">
+                    <!-- Navigation -->
+                    <div onclick="switchTab('map')" class="bg-toss-card dark:bg-toss-darkCard p-5 rounded-toss shadow-toss active:scale-95 transition-all cursor-pointer flex flex-col justify-between h-36 relative overflow-hidden ring-2 ring-toss-blue ring-offset-2 ring-offset-toss-bg dark:ring-offset-toss-darkBg">
+                        <div class="w-11 h-11 rounded-toss-sm bg-blue-100 dark:bg-blue-900/30 text-toss-blue flex items-center justify-center text-xl font-bold">🧭</div>
+                        <div>
+                            <h3 class="font-bold text-[16px] mb-0.5">전국 길찾기</h3>
+                            <p class="text-[12px] text-toss-subtext font-medium">대중교통/하차알림 GPS</p>
+                        </div>
+                    </div>
+
+                    <!-- Dutch Pay -->
+                    <div onclick="switchTab('dutch')" class="bg-toss-card dark:bg-toss-darkCard p-5 rounded-toss shadow-toss active:scale-95 transition-all cursor-pointer flex flex-col justify-between h-36 relative overflow-hidden">
+                        <div class="w-11 h-11 rounded-toss-sm bg-green-100 dark:bg-green-900/30 text-toss-green flex items-center justify-center text-xl font-bold">💸</div>
+                        <div>
+                            <h3 class="font-bold text-[16px] mb-0.5">스마트 더치페이</h3>
+                            <p class="text-[12px] text-toss-subtext font-medium">단위절사 & 카톡 공유</p>
+                        </div>
+                    </div>
+
+                    <!-- Wage Calc -->
+                    <div onclick="switchTab('wage')" class="bg-toss-card dark:bg-toss-darkCard p-5 rounded-toss shadow-toss active:scale-95 transition-all cursor-pointer flex flex-col justify-between h-36 relative overflow-hidden">
+                        <div class="w-11 h-11 rounded-toss-sm bg-yellow-100 dark:bg-yellow-900/30 text-toss-yellow flex items-center justify-center text-xl font-bold">💰</div>
+                        <div>
+                            <h3 class="font-bold text-[16px] mb-0.5">알바 & 실수령액</h3>
+                            <p class="text-[12px] text-toss-subtext font-medium">주휴수당 및 4대보험</p>
+                        </div>
+                    </div>
+
+                    <!-- D-Day -->
+                    <div onclick="switchTab('dday')" class="bg-toss-card dark:bg-toss-darkCard p-5 rounded-toss shadow-toss active:scale-95 transition-all cursor-pointer flex flex-col justify-between h-36 relative overflow-hidden">
+                        <div class="w-11 h-11 rounded-toss-sm bg-red-100 dark:bg-red-900/30 text-toss-red flex items-center justify-center text-xl font-bold">📅</div>
+                        <div>
+                            <h3 class="font-bold text-[16px] mb-0.5">D-Day & 기념일</h3>
+                            <p class="text-[12px] text-toss-subtext font-medium">카운트다운 & 백일계산</p>
+                        </div>
+                    </div>
+
+                    <!-- Pomodoro & Noise -->
+                    <div onclick="switchTab('pomo')" class="bg-toss-card dark:bg-toss-darkCard p-5 rounded-toss shadow-toss active:scale-95 transition-all cursor-pointer flex flex-col justify-between h-36 relative overflow-hidden">
+                        <div class="w-11 h-11 rounded-toss-sm bg-purple-100 dark:bg-purple-900/30 text-toss-purple flex items-center justify-center text-xl font-bold">⏱️</div>
+                        <div>
+                            <h3 class="font-bold text-[16px] mb-0.5">포모도로 & 소음</h3>
+                            <p class="text-[12px] text-toss-subtext font-medium">집중 타이머 & 인공 빗소리</p>
+                        </div>
+                    </div>
+
+                    <!-- Habits -->
+                    <div onclick="switchTab('habit')" class="bg-toss-card dark:bg-toss-darkCard p-5 rounded-toss shadow-toss active:scale-95 transition-all cursor-pointer flex flex-col justify-between h-36 relative overflow-hidden">
+                        <div class="w-11 h-11 rounded-toss-sm bg-teal-100 dark:bg-teal-900/30 text-teal-500 flex items-center justify-center text-xl font-bold">🌱</div>
+                        <div>
+                            <h3 class="font-bold text-[16px] mb-0.5">습관 트래커</h3>
+                            <p class="text-[12px] text-toss-subtext font-medium">매일 달성 연속 기록</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Utility Bar -->
+                <div class="bg-toss-card dark:bg-toss-darkCard p-4 rounded-toss shadow-toss flex justify-around items-center">
+                    <button onclick="switchTab('cook')" class="flex flex-col items-center gap-1 active:scale-90 transition-transform">
+                        <span class="text-2xl">🍳</span>
+                        <span class="text-[12px] font-bold">요리 계량</span>
+                    </button>
+                    <div class="w-[1px] h-8 bg-gray-200 dark:bg-gray-800"></div>
+                    <button onclick="switchTab('extra')" class="flex flex-col items-center gap-1 active:scale-90 transition-transform">
+                        <span class="text-2xl">🎲</span>
+                        <span class="text-[12px] font-bold">랜덤 뽑기</span>
+                    </button>
+                    <div class="w-[1px] h-8 bg-gray-200 dark:bg-gray-800"></div>
+                    <button onclick="switchTab('extra')" class="flex flex-col items-center gap-1 active:scale-90 transition-transform">
+                        <span class="text-2xl">📐</span>
+                        <span class="text-[12px] font-bold">평수 변환</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- VIEW: MAP & NATIONWIDE WEBVIEW NAVIGATION -->
+            <section id="view-map" class="view-panel hidden flex flex-col gap-3 h-full">
+                
+                <!-- Map Header & Mode Selector -->
+                <div class="map-ui-panel bg-toss-card dark:bg-toss-darkCard p-4 rounded-toss shadow-toss flex flex-col gap-3 relative z-20 shrink-0">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-[16px] flex items-center gap-1.5"><i class="fa-solid fa-map-location-dot text-toss-blue"></i> 길찾기 엔진</span>
+                        </div>
+                        <div class="flex gap-1.5">
+                            <button onclick="setMapEngine('osrm')" id="engine-osrm-btn" class="text-[11px] font-extrabold bg-toss-blue text-white px-3 py-1.5 rounded-full transition-colors">실시간 GPS</button>
+                            <button onclick="setMapEngine('webview')" id="engine-webview-btn" class="text-[11px] font-extrabold bg-toss-bg dark:bg-[#2C2C2E] text-toss-subtext px-3 py-1.5 rounded-full transition-colors">웹뷰(WebView) 전국</button>
+                        </div>
+                    </div>
+
+                    <!-- Search Input Box -->
+                    <div class="relative">
+                        <div class="flex items-center gap-3 bg-toss-bg dark:bg-[#2C2C2E] p-3 rounded-toss-sm border border-transparent focus-within:border-toss-blue transition-colors">
+                            <i class="fa-solid fa-magnifying-glass text-toss-subtext"></i>
+                            <input type="text" id="destInput" oninput="handleDestSearchInput(this.value)" onkeydown="if(event.key==='Enter'){this.blur(); calculateRealRoute();}" placeholder="전국 도착지 (예: 강남역, 부산역, 제주공항)" class="w-full bg-transparent font-bold text-[14px] outline-none placeholder:text-toss-subtext/70">
+                            <button id="clearDestBtn" onclick="clearDestInput()" class="hidden text-toss-subtext p-1.5 active:scale-90 bg-gray-200 dark:bg-gray-700 rounded-full w-5 h-5 flex items-center justify-center text-xs"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        <div id="searchSuggestions" class="hidden absolute top-[calc(100%+8px)] left-0 right-0 bg-white dark:bg-toss-darkCard shadow-toss-lg rounded-toss-sm z-50 max-h-52 overflow-y-auto border border-gray-100 dark:border-gray-800"></div>
+                    </div>
+
+                    <!-- Quick Preset Location Chips -->
+                    <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[12px] no-scrollbar">
+                        <span class="text-toss-subtext shrink-0 font-bold text-[11px]">빠른위치:</span>
+                        <button onclick="setQuickDest('강남역', 37.4979, 127.0276)" class="px-2.5 py-1 bg-toss-bg dark:bg-[#2C2C2E] rounded-full shrink-0 font-bold active:scale-95">강남역</button>
+                        <button onclick="setQuickDest('홍대입구역', 37.5575, 126.9245)" class="px-2.5 py-1 bg-toss-bg dark:bg-[#2C2C2E] rounded-full shrink-0 font-bold active:scale-95">홍대입구</button>
+                        <button onclick="setQuickDest('서울역', 37.5547, 126.9707)" class="px-2.5 py-1 bg-toss-bg dark:bg-[#2C2C2E] rounded-full shrink-0 font-bold active:scale-95">서울역</button>
+                        <button onclick="setQuickDest('부산역', 35.1152, 129.0422)" class="px-2.5 py-1 bg-toss-bg dark:bg-[#2C2C2E] rounded-full shrink-0 font-bold active:scale-95">부산역</button>
+                        <button onclick="setQuickDest('제주공항', 33.5104, 126.4914)" class="px-2.5 py-1 bg-toss-bg dark:bg-[#2C2C2E] rounded-full shrink-0 font-bold active:scale-95">제주공항</button>
+                    </div>
+                </div>
+
+                <!-- Interactive Viewport Display Container -->
+                <div class="flex-1 relative rounded-toss overflow-hidden shadow-toss border border-gray-100 dark:border-gray-800 min-h-[220px]">
+                    <!-- Native Leaflet OSRM Container -->
+                    <div id="app-map" class="w-full h-full bg-[#E5E3DF] dark:bg-[#1A1A1A] z-0"></div>
+                    
+                    <!-- Embedded WebView Container -->
+                    <div id="webview-container" class="hidden absolute inset-0 z-10 bg-white dark:bg-toss-darkCard flex flex-col">
+                        <div class="bg-toss-bg dark:bg-[#2C2C2E] px-3 py-2 flex justify-between items-center text-xs border-b border-gray-200 dark:border-gray-800">
+                            <span id="webview-status-title" class="font-bold text-toss-text dark:text-white truncate">네이버 지도 전국 웹뷰 서비스</span>
+                            <div class="flex gap-1">
+                                <button onclick="switchWebViewProvider('naver')" id="wv-provider-naver" class="px-2 py-1 rounded bg-toss-blue text-white font-bold">네이버</button>
+                                <button onclick="switchWebViewProvider('kakao')" id="wv-provider-kakao" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 text-toss-text dark:text-white font-bold">카카오</button>
+                            </div>
+                        </div>
+                        <iframe id="mapIframe" src="about:blank" class="w-full flex-1 border-0"></iframe>
+                    </div>
+
+                    <!-- GPS Turn-by-Turn & Transit Nav Overlay -->
+                    <div id="navOverlay" class="hidden absolute inset-0 z-50 flex flex-col justify-between pointer-events-none">
+                        
+                        <!-- Top Navigation Instruction Bar -->
+                        <div class="p-4 pt-[calc(var(--sat)+16px)]" id="navTopPanel">
+                            <!-- Get Off Alert Box (Appears when approaching stop) -->
+                            <div id="getOffAlertBanner" class="hidden mb-2 p-3.5 rounded-toss text-white font-bold text-sm shadow-lg flex items-center gap-3 getoff-alert-pulse pointer-events-auto">
+                                <i class="fa-solid fa-bell text-2xl animate-bounce"></i>
+                                <div class="flex-1">
+                                    <div class="text-[12px] opacity-90">🔔 하차 준비 알림</div>
+                                    <div id="getOffAlertText" class="text-[15px] font-extrabold leading-tight">잠시 후 이번 정류장에서 내리세요!</div>
+                                </div>
+                            </div>
+
+                            <div class="bg-toss-darkCard/95 backdrop-blur-md text-white p-5 rounded-toss shadow-toss-lg flex items-center gap-4 pointer-events-auto relative overflow-hidden border border-white/10">
+                                <div id="navProgressBar" class="absolute bottom-0 left-0 h-1 bg-toss-blue w-0 transition-all duration-300"></div>
+                                <div id="navTurnIcon" class="text-[36px] text-white w-12 text-center drop-shadow shrink-0">
+                                    <i class="fa-solid fa-arrow-up"></i>
+                                </div>
+                                <div class="flex-1 overflow-hidden">
+                                    <div class="flex items-end gap-1 mb-0.5">
+                                        <span id="navTurnDist" class="text-[28px] font-black leading-none">--</span>
+                                        <span id="navTurnUnit" class="text-[14px] font-bold text-gray-300 pb-0.5">m</span>
+                                    </div>
+                                    <div id="navTurnDesc" class="text-[15px] font-bold text-gray-100 truncate">경로 안내 중</div>
+                                    <div id="navSubDesc" class="text-[12px] font-semibold text-toss-blue truncate mt-0.5"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Speed Gauge -->
+                        <div class="absolute right-4 bottom-[115px] pointer-events-auto">
+                            <div class="w-12 h-12 bg-white/95 dark:bg-toss-darkCard/95 backdrop-blur rounded-full shadow-lg border border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center">
+                                <span id="navCurrentSpeed" class="text-[17px] font-black leading-none">0</span>
+                                <span class="text-[8px] font-bold text-toss-subtext">km/h</span>
+                            </div>
+                        </div>
+
+                        <!-- Bottom Nav Status -->
+                        <div class="p-4 pb-[calc(var(--sab)+20px)]">
+                            <div class="bg-white/95 dark:bg-toss-darkCard/95 backdrop-blur-md p-5 rounded-toss shadow-toss-lg flex items-center justify-between pointer-events-auto border border-gray-100 dark:border-gray-800">
+                                <div class="flex flex-col">
+                                    <div class="flex items-baseline gap-2">
+                                        <span id="navTimeLeft" class="text-[26px] font-black text-toss-blue">--</span>
+                                        <span id="navDistLeft" class="text-[13px] font-bold text-toss-subtext">--km</span>
+                                    </div>
+                                    <span class="text-[12px] font-bold text-toss-subtext">도착 예정시간 <span id="navArrival" class="text-toss-text dark:text-toss-darkText">--:--</span></span>
+                                </div>
+                                <button onclick="window.stopInAppNavigation()" class="w-12 h-12 bg-toss-red text-white font-bold rounded-full flex items-center justify-center text-base shadow-md active:scale-90 transition-transform">
+                                    종료
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Route Result Panel -->
+                <div id="routeResult" class="hidden bg-toss-card dark:bg-toss-darkCard p-4 rounded-toss shadow-toss flex-col gap-3 shrink-0">
+                    <div class="grid grid-cols-4 gap-1 bg-toss-bg dark:bg-[#2C2C2E] p-1.5 rounded-toss-sm text-[12px] font-bold text-center">
+                        <button onclick="selectTransportMode('transit')" id="mode-transit" class="py-2 rounded-xl bg-white dark:bg-toss-darkCard text-toss-blue shadow-sm transition-all flex flex-col items-center gap-1"><i class="fa-solid fa-bus text-base"></i> 대중교통</button>
+                        <button onclick="selectTransportMode('car')" id="mode-car" class="py-2 rounded-xl text-toss-subtext transition-all flex flex-col items-center gap-1"><i class="fa-solid fa-car text-base"></i> 자동차</button>
+                        <button onclick="selectTransportMode('bike')" id="mode-bike" class="py-2 rounded-xl text-toss-subtext transition-all flex flex-col items-center gap-1"><i class="fa-solid fa-bicycle text-base"></i> 자전거</button>
+                        <button onclick="selectTransportMode('walk')" id="mode-walk" class="py-2 rounded-xl text-toss-subtext transition-all flex flex-col items-center gap-1"><i class="fa-solid fa-person-walking text-base"></i> 도보</button>
+                    </div>
+
+                    <div id="routeDetail" class="flex flex-col gap-1.5">
+                        <div class="flex justify-between items-baseline">
+                            <div class="flex items-center gap-2">
+                                <span id="routeTime" class="text-[26px] font-black text-toss-blue">--</span>
+                                <span id="routeFastestBadge" class="hidden text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-toss-blue/10 text-toss-blue">최적</span>
+                            </div>
+                            <span id="routeDistance" class="text-[14px] font-bold text-toss-subtext">-- km</span>
+                        </div>
+                        <p id="routeExtraInfo" class="text-[12px] font-medium text-toss-subtext bg-toss-bg dark:bg-[#2C2C2E] p-2.5 rounded-lg"></p>
+                    </div>
+
+                    <div id="actionButtons" class="flex gap-2">
+                        <button onclick="toggleStepDrawer()" class="flex-1 py-3 bg-toss-bg dark:bg-[#2C2C2E] text-toss-text dark:text-toss-darkText font-bold rounded-toss-sm text-[13px] active:scale-95 transition-transform">
+                            상세 경로
+                        </button>
+                        <button onclick="startInAppNavigation()" class="flex-[2] py-3 bg-toss-blue text-white font-bold rounded-toss-sm text-[14px] shadow-md shadow-toss-blue/30 active:scale-95 transition-transform flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-location-arrow"></i> GPS 안내 시작
+                        </button>
+                    </div>
+
+                    <div id="stepDrawer" class="hidden border-t border-gray-100 dark:border-gray-800 pt-2.5 max-h-48 overflow-y-auto flex flex-col gap-1 text-[12px]"></div>
+                </div>
+            </section>
+
+            <!-- VIEW: DUTCH PAY -->
+            <section id="view-dutch" class="view-panel hidden flex flex-col gap-4">
+                <div class="bg-toss-card dark:bg-toss-darkCard p-6 rounded-toss shadow-toss flex flex-col gap-4">
+                    <h2 class="text-[20px] font-bold">💸 스마트 더치페이 (N빵)</h2>
+                    <div>
+                        <label class="text-[13px] font-bold text-toss-subtext mb-1 block">총 결제 금액</label>
+                        <div class="flex items-center gap-2 bg-toss-bg dark:bg-[#2C2C2E] px-4 py-3 rounded-toss-sm focus-within:ring-2 ring-toss-blue transition-all">
+                            <input type="number" id="dutchTotal" placeholder="0" oninput="calculateDutch()" class="w-full bg-transparent font-black text-[24px] outline-none placeholder:text-gray-300">
+                            <span class="font-bold text-[18px]">원</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[13px] font-bold text-toss-subtext mb-1 block">정산 인원</label>
+                        <div class="flex items-center gap-3 bg-toss-bg dark:bg-[#2C2C2E] p-2 rounded-toss-sm w-max">
+                            <button onclick="adjustDutchPeople(-1)" class="w-10 h-10 rounded-xl bg-white dark:bg-toss-darkCard shadow-sm font-bold text-xl active:scale-95">-</button>
+                            <span id="dutchPeopleCount" class="font-black text-[18px] w-12 text-center">3명</span>
+                            <button onclick="adjustDutchPeople(1)" class="w-10 h-10 rounded-xl bg-white dark:bg-toss-darkCard shadow-sm font-bold text-xl active:scale-95">+</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[13px] font-bold text-toss-subtext mb-1 block">단위 절사 옵션</label>
+                        <div class="grid grid-cols-3 gap-2 text-[13px] font-bold">
+                            <button onclick="setDutchRound(1)" id="round-1" class="py-2.5 rounded-toss-sm bg-toss-blue text-white shadow-sm transition-all">원단위</button>
+                            <button onclick="setDutchRound(100)" id="round-100" class="py-2.5 rounded-toss-sm bg-toss-bg dark:bg-[#2C2C2E] text-toss-subtext transition-all">100원 절사</button>
+                            <button onclick="setDutchRound(1000)" id="round-1000" class="py-2.5 rounded-toss-sm bg-toss-bg dark:bg-[#2C2C2E] text-toss-subtext transition-all">1,000원 절사</button>
+                        </div>
+                    </div>
+                    <div class="bg-toss-lightBlue dark:bg-toss-blue/10 p-5 rounded-toss-sm flex flex-col gap-2 border border-toss-blue/20 mt-1">
+                        <span class="text-[13px] font-bold text-toss-blue">1인당 송금할 금액</span>
+                        <div class="flex justify-between items-baseline">
+                            <span id="dutchPerPerson" class="text-[30px] font-black text-toss-blue tracking-tight">0 원</span>
+                            <span id="dutchRemainder" class="text-[12px] font-bold text-toss-subtext">잔액 0원</span>
+                        </div>
+                    </div>
+                    <button onclick="copyDutchShareText()" class="w-full py-4 bg-toss-blue text-white font-bold rounded-toss-sm text-[15px] shadow-sm active:scale-95 transition-transform flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-comment"></i> 카카오톡 공유 문구 복사
+                    </button>
+                </div>
+            </section>
+
+            <!-- VIEW: WAGE CALC -->
+            <section id="view-wage" class="view-panel hidden flex flex-col gap-4">
+                <div class="bg-toss-card dark:bg-toss-darkCard p-6 rounded-toss shadow-toss flex flex-col gap-4">
+                    <h2 class="text-[20px] font-bold">💰 알바 시급 & 실수령액 계산기</h2>
+                    <div>
+                        <label class="text-[13px] font-bold text-toss-subtext mb-1 block">시급 (2026 최저시급 10,030원)</label>
+                        <div class="flex items-center gap-2 bg-toss-bg dark:bg-[#2C2C2E] px-4 py-3 rounded-toss-sm">
+                            <input type="number" id="wageHourly" value="10030" oninput="calculateWage()" class="w-full bg-transparent font-black text-[20px] outline-none">
+                            <span class="font-bold text-[16px]">원</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-[13px] font-bold text-toss-subtext mb-1 block">주당 근무시간</label>
+                            <input type="number" id="wageHoursPerWeek" value="20" oninput="calculateWage()" class="w-full bg-toss-bg dark:bg-[#2C2C2E] px-4 py-3 rounded-toss-sm font-bold text-[16px] outline-none">
+                        </div>
+                        <div>
+                            <label class="text-[13px] font-bold text-toss-subtext mb-1 block">한달 근무 주수</label>
+                            <input type="number" id="wageWeeksPerMonth" value="4.345" step="0.001" oninput="calculateWage()" class="w-full bg-toss-bg dark:bg-[#2C2C2E] px-4 py-3 rounded-toss-sm font-bold text-[16px] outline-none">
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <label class="flex items-center justify-between p-3 bg-toss-bg dark:bg-[#2C2C2E] rounded-toss-sm cursor-pointer">
+                            <span class="font-bold text-[13px]">주휴수당 포함 (주 15시간 이상)</span>
+                            <input type="checkbox" id="wageWeeklyAllowance" checked onchange="calculateWage()" class="w-5 h-5 accent-toss-blue">
+                        </label>
+                        <div class="grid grid-cols-2 gap-2 text-[12px] font-bold">
+                            <button onclick="setTaxType('4ins')" id="tax-4ins" class="py-2.5 rounded-toss-sm bg-toss-blue text-white shadow-sm">4대보험 (9.4%)</button>
+                            <button onclick="setTaxType('33tax')" id="tax-33tax" class="py-2.5 rounded-toss-sm bg-toss-bg dark:bg-[#2C2C2E] text-toss-subtext">3.3% 원천징수</button>
+                        </div>
+                    </div>
+                    <div class="bg-[#F2F4F6] dark:bg-[#202022] p-5 rounded-toss-sm flex flex-col gap-2.5">
+                        <div class="flex justify-between items-center text-[13px] font-bold text-toss-subtext">
+                            <span>기본 월급</span>
+                            <span id="wageBaseAmount" class="text-toss-text dark:text-toss-darkText">0 원</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[13px] font-bold text-toss-subtext">
+                            <span>주휴수당</span>
+                            <span id="wageWeeklyAmount" class="text-toss-blue">+ 0 원</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[13px] font-bold text-toss-subtext">
+                            <span>예상 세금 공제</span>
+                            <span id="wageTaxAmount" class="text-toss-red">- 0 원</span>
+                        </div>
+                        <div class="border-t border-gray-200 dark:border-gray-700 pt-3 flex justify-between items-baseline">
+                            <span class="font-bold text-[15px]">예상 실수령액</span>
+                            <span id="wageTotalAmount" class="text-[26px] font-black text-toss-text dark:text-white">0 원</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW: DDAY -->
+            <section id="view-dday" class="view-panel hidden flex flex-col gap-4">
+                <div class="bg-toss-card dark:bg-toss-darkCard p-6 rounded-toss shadow-toss flex flex-col gap-4">
+                    <h2 class="text-[20px] font-bold">📅 D-Day & 기념일 계산기</h2>
+                    <div class="flex flex-col gap-3">
+                        <input type="text" id="ddayTitle" placeholder="일정 이름 (예: 제주도 여행, 수능, 커플 기념일)" class="bg-toss-bg dark:bg-[#2C2C2E] px-4 py-3.5 rounded-toss-sm font-bold text-[15px] outline-none">
+                        <input type="date" id="ddayTargetDate" class="bg-toss-bg dark:bg-[#2C2C2E] px-4 py-3.5 rounded-toss-sm font-bold text-[15px] outline-none text-toss-subtext">
+                        <button onclick="addDDayItem()" class="py-3.5 bg-toss-text dark:bg-white text-white dark:text-toss-text font-bold rounded-toss-sm text-[15px] active:scale-95 transition-transform">D-Day 등록하기</button>
+                    </div>
+                    <div id="ddayListContainer" class="flex flex-col gap-3 mt-2"></div>
+                </div>
+            </section>
+
+            <!-- VIEW: POMODORO & AMBIENT SOUND -->
+            <section id="view-pomo" class="view-panel hidden flex flex-col gap-4">
+                <div class="bg-toss-card dark:bg-toss-darkCard p-6 rounded-toss shadow-toss flex flex-col gap-4 text-center">
+                    <h2 class="text-[20px] font-bold text-left">⏱️ 포모도로 & 소음 합성기</h2>
+                    
+                    <div class="py-6 flex flex-col items-center justify-center">
+                        <div class="relative w-48 h-48 rounded-full border-8 border-toss-bg dark:border-[#2C2C2E] border-t-toss-purple flex items-center justify-center shadow-inner">
+                            <span id="pomoDisplay" class="text-[44px] font-black tracking-tight font-mono">25:00</span>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-center gap-3">
+                        <button onclick="togglePomoTimer()" id="pomoStartBtn" class="px-8 py-3.5 bg-toss-purple text-white font-bold rounded-toss-sm text-[15px] shadow-md active:scale-95 transition-transform">시작</button>
+                        <button onclick="resetPomoTimer()" class="px-6 py-3.5 bg-toss-bg dark:bg-[#2C2C2E] text-toss-subtext font-bold rounded-toss-sm text-[15px] active:scale-95 transition-transform">리셋</button>
+                    </div>
+
+                    <div class="border-t border-gray-100 dark:border-gray-800 pt-4 mt-2 text-left">
+                        <span class="text-[14px] font-bold block mb-2">🌧️ 인공지능 백색소음 합성기</span>
+                        <div class="grid grid-cols-2 gap-2 text-[13px] font-bold">
+                            <button onclick="toggleNoise('rain')" id="noise-rain" class="p-3 rounded-toss-sm bg-toss-bg dark:bg-[#2C2C2E] flex items-center justify-between active:scale-95 transition-transform">
+                                <span>🌧️ 잔잔한 빗소리</span>
+                                <i class="fa-solid fa-play text-toss-subtext"></i>
+                            </button>
+                            <button onclick="toggleNoise('white')" id="noise-white" class="p-3 rounded-toss-sm bg-toss-bg dark:bg-[#2C2C2E] flex items-center justify-between active:scale-95 transition-transform">
+                                <span>📻 핑크 노이즈</span>
+                                <i class="fa-solid fa-play text-toss-subtext"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW: HABIT TRACKER -->
+            <section id="view-habit" class="view-panel hidden flex flex-col gap-4">
+                <div class="bg-toss-card dark:bg-toss-darkCard p-6 rounded-toss shadow-toss flex flex-col gap-4">
+                    <h2 class="text-[20px] font-bold">🌱 습관 달성 트래커</h2>
+                    <div class="flex gap-2">
+                        <input type="text" id="habitInput" placeholder="새로운 습관 (예: 영양제 먹기, 1만보 걷기)" class="flex-1 bg-toss-bg dark:bg-[#2C2C2E] px-4 py-3 rounded-toss-sm font-bold text-[14px] outline-none">
+                        <button onclick="addHabit()" class="px-5 py-3 bg-toss-blue text-white font-bold rounded-toss-sm active:scale-95 transition-all">추가</button>
+                    </div>
+                    <div id="habitList" class="flex flex-col gap-3 mt-2"></div>
+                </div>
+            </section>
+
+            <!-- VIEW: COOKING MEASUREMENT -->
+            <section id="view-cook" class="view-panel hidden flex flex-col gap-4">
+                <div class="bg-toss-card dark:bg-toss-darkCard p-6 rounded-toss shadow-toss flex flex-col gap-4">
+                    <h2 class="text-[20px] font-bold">🍳 요리 계량 단위 변환기</h2>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-[12px] font-bold text-toss-subtext block mb-1">큰술 (1 큰술 = 15ml)</label>
+                            <input type="number" id="cookTbsp" oninput="convertCook('tbsp')" placeholder="0" class="w-full bg-toss-bg dark:bg-[#2C2C2E] p-3 rounded-toss-sm font-bold text-[18px]">
+                        </div>
+                        <div>
+                            <label class="text-[12px] font-bold text-toss-subtext block mb-1">작은술 (1 작은술 = 5ml)</label>
+                            <input type="number" id="cookTsp" oninput="convertCook('tsp')" placeholder="0" class="w-full bg-toss-bg dark:bg-[#2C2C2E] p-3 rounded-toss-sm font-bold text-[18px]">
+                        </div>
+                        <div>
+                            <label class="text-[12px] font-bold text-toss-subtext block mb-1">종이컵 (1 컵 = 180ml)</label>
+                            <input type="number" id="cookCup" oninput="convertCook('cup')" placeholder="0" class="w-full bg-toss-bg dark:bg-[#2C2C2E] p-3 rounded-toss-sm font-bold text-[18px]">
+                        </div>
+                        <div>
+                            <label class="text-[12px] font-bold text-toss-subtext block mb-1">용량 (ml)</label>
+                            <input type="number" id="cookMl" oninput="convertCook('ml')" placeholder="0" class="w-full bg-toss-bg dark:bg-[#2C2C2E] p-3 rounded-toss-sm font-bold text-[18px]">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW: EXTRA -->
+            <section id="view-extra" class="view-panel hidden flex flex-col gap-4">
+                <div class="bg-toss-card dark:bg-toss-darkCard p-6 rounded-toss shadow-toss flex flex-col gap-3">
+                    <h2 class="text-[20px] font-bold">🎲 결정 장애 해결! 랜덤 뽑기</h2>
+                    <p class="text-[13px] text-toss-subtext">오늘 점심 뭐 먹지? 결정이 어려울 때 버튼을 누르세요.</p>
+                    <div id="randomResult" class="py-6 bg-toss-bg dark:bg-[#2C2C2E] rounded-toss-sm text-center font-black text-[24px] text-toss-blue">
+                        ?
+                    </div>
+                    <button onclick="pickRandomItem()" class="py-3.5 bg-toss-blue text-white font-bold rounded-toss-sm shadow-md active:scale-95 transition-transform">랜덤 메뉴 뽑기!</button>
+                </div>
+
+                <div class="bg-toss-card dark:bg-toss-darkCard p-6 rounded-toss shadow-toss flex flex-col gap-3">
+                    <h2 class="text-[20px] font-bold">📐 부동산 평수 <-> m² 변환기</h2>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-[12px] font-bold text-toss-subtext block mb-1">평수 (평)</label>
+                            <input type="number" id="pyungVal" oninput="convertPyung('pyung')" placeholder="0" class="w-full bg-toss-bg dark:bg-[#2C2C2E] p-3 rounded-toss-sm font-bold text-[18px]">
+                        </div>
+                        <div>
+                            <label class="text-[12px] font-bold text-toss-subtext block mb-1">제곱미터 (m²)</label>
+                            <input type="number" id="sqmVal" oninput="convertPyung('sqm')" placeholder="0" class="w-full bg-toss-bg dark:bg-[#2C2C2E] p-3 rounded-toss-sm font-bold text-[18px]">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- App Bottom Navigation Bar -->
+        <nav id="bottomNav" class="fixed bottom-0 left-0 right-0 max-w-md mx-auto z-40 bg-white/95 dark:bg-toss-darkCard/95 backdrop-blur-xl border-t border-gray-100 dark:border-gray-800 pb-[env(safe-area-inset-bottom)] px-2 pt-2 flex justify-around items-center text-[10px] font-bold shadow-lg transition-transform duration-300">
+            <button onclick="switchTab('home')" id="nav-home" class="flex flex-col items-center gap-1 text-toss-blue w-14 py-1 active:scale-90 transition-all">
+                <i class="fa-solid fa-house text-[19px]"></i><span>홈</span>
+            </button>
+            <button onclick="switchTab('map')" id="nav-map" class="flex flex-col items-center gap-1 text-toss-subtext w-14 py-1 active:scale-90 transition-all">
+                <i class="fa-solid fa-location-arrow text-[19px]"></i><span>길찾기</span>
+            </button>
+            <button onclick="switchTab('dutch')" id="nav-dutch" class="flex flex-col items-center gap-1 text-toss-subtext w-14 py-1 active:scale-90 transition-all">
+                <i class="fa-solid fa-receipt text-[19px]"></i><span>정산</span>
+            </button>
+            <button onclick="switchTab('wage')" id="nav-wage" class="flex flex-col items-center gap-1 text-toss-subtext w-14 py-1 active:scale-90 transition-all">
+                <i class="fa-solid fa-sack-dollar text-[19px]"></i><span>계산기</span>
+            </button>
+            <button onclick="switchTab('extra')" id="nav-extra" class="flex flex-col items-center gap-1 text-toss-subtext w-14 py-1 active:scale-90 transition-all">
+                <i class="fa-solid fa-grid-2 text-[19px]"></i><span>전체</span>
+            </button>
+        </nav>
+
+        <!-- Fullscreen External WebView Overlay Modal -->
+        <div id="fullWebViewModal" class="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex flex-col justify-end hidden">
+            <div class="w-full h-[92vh] bg-white dark:bg-toss-darkCard rounded-t-toss flex flex-col overflow-hidden shadow-2xl webview-modal translate-y-full" id="fullWebViewContainer">
+                <div class="px-5 py-3.5 bg-toss-bg dark:bg-[#2C2C2E] border-b border-gray-200 dark:border-gray-800 flex justify-between items-center shrink-0">
+                    <span id="fullWebViewTitle" class="font-bold text-[15px] flex items-center gap-2"><i class="fa-solid fa-globe text-toss-blue"></i> 전국 지도 웹뷰 서비스</span>
+                    <button onclick="closeWebViewModal()" class="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-toss-text dark:text-white font-bold active:scale-90 transition-transform"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <iframe id="fullIframe" src="about:blank" class="w-full flex-1 border-0"></iframe>
+            </div>
+        </div>
+
+        <!-- Global Toast Notification Component -->
+        <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-[110] bg-[#333D4B]/95 text-white px-6 py-3 rounded-full text-[13px] font-bold shadow-2xl transition-all duration-300 transform translate-y-10 opacity-0 pointer-events-none w-max max-w-[90%] text-center backdrop-blur-md">
+            알림 메시지
+        </div>
+    </div>
+
+    <script>
+        // Global State
+        let currentTab = 'home';
+        let isDarkMode = false;
+        
+        // Map State
+        let map = null;
+        let startMarker = null;
+        let destMarker = null;
+        let routePolyline = null;
+        
+        let currentLat = 37.5665;
+        let currentLng = 126.9780;
+        let destLat = null;
+        let destLng = null;
+        let isDestSet = false;
+        
+        let mapEngineMode = 'osrm';
+        let currentTransportMode = 'transit';
+        let calculatedRouteData = null;
+        let searchDebounce = null;
+        let wakeLock = null;
+
+        // Navigation Mode
+        let isNavigating = false;
+        let navWatchId = null;
+        let activeNavSteps = [];
+        let currentStepIndex = 0;
+        let getOffAlertedSet = new Set(); // 하차 알림 중복 방지
+
+        // Audio Context for Chimes & White Noise
+        let audioCtx = null;
+
+        window.onload = () => {
+            initDarkMode();
+            renderDDays();
+            renderHabits();
+            calculateDutch();
+            calculateWage();
+            switchTab('home');
+        };
+
+        // --- Duration Formatter Helper ---
+        // Converts minutes into human-friendly format: e.g. "1일 2시간 15분", "1시간 30분", "5분"
+        function formatDuration(minutes) {
+            minutes = Math.round(minutes);
+            if (minutes <= 0) return '1분 미만';
+            
+            const days = Math.floor(minutes / (24 * 60));
+            const hours = Math.floor((minutes % (24 * 60)) / 60);
+            const mins = minutes % 60;
+
+            let result = '';
+            if (days > 0) result += `${days}일 `;
+            if (hours > 0) result += `${hours}시간 `;
+            if (mins > 0 || result === '') result += `${mins}분`;
+            return result.trim();
+        }
+
+        function switchTab(tabId) {
+            currentTab = tabId;
+            document.querySelectorAll('.view-panel').forEach(p => p.classList.add('hidden'));
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+
+            document.querySelectorAll('#bottomNav button').forEach(btn => {
+                btn.classList.remove('text-toss-text', 'dark:text-white', 'text-toss-blue');
+                btn.classList.add('text-toss-subtext');
+            });
+            const activeBtn = document.getElementById(`nav-${tabId}`);
+            if (activeBtn) {
+                activeBtn.classList.remove('text-toss-subtext');
+                activeBtn.classList.add('text-toss-text', 'dark:text-white');
+            }
+
+            if (tabId === 'map') {
+                setTimeout(initLeafletMap, 150);
+            }
+        }
+
+        function toggleDarkMode() {
+            isDarkMode = !isDarkMode;
+            document.documentElement.classList.toggle('dark', isDarkMode);
+            document.getElementById('themeIcon').className = isDarkMode ? 'fa-solid fa-sun text-yellow-400' : 'fa-solid fa-moon text-base';
+            localStorage.setItem('lifekit_dark', isDarkMode);
+        }
+
+        function initDarkMode() {
+            if (localStorage.getItem('lifekit_dark') === 'true') toggleDarkMode();
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.classList.remove('translate-y-10', 'opacity-0');
+            setTimeout(() => toast.classList.add('translate-y-10', 'opacity-0'), 2500);
+        }
+
+        // Web Audio Synthesizer: Play friendly Get-Off Chime sound without external sound files
+        function playGetOffChimeSound() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                const now = audioCtx.currentTime;
+                // Friendly 3-tone chime chime (C5 -> E5 -> G5 -> C6)
+                const freqs = [523.25, 659.25, 783.99, 1046.50];
+                freqs.forEach((freq, idx) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    
+                    gain.gain.setValueAtTime(0.3, now + idx * 0.15);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.15 + 0.35);
+                    
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    
+                    osc.start(now + idx * 0.15);
+                    osc.stop(now + idx * 0.15 + 0.35);
+                });
+
+                if (navigator.vibrate) {
+                    navigator.vibrate([300, 150, 300, 150, 500]);
+                }
+            } catch (e) {
+                console.error("Audio playback error:", e);
+            }
+        }
+
+        function setMapEngine(mode) {
+            mapEngineMode = mode;
+            const osrmBtn = document.getElementById('engine-osrm-btn');
+            const wvBtn = document.getElementById('engine-webview-btn');
+            const wvContainer = document.getElementById('webview-container');
+
+            if (mode === 'osrm') {
+                osrmBtn.className = "text-[11px] font-extrabold bg-toss-blue text-white px-3 py-1.5 rounded-full transition-colors";
+                wvBtn.className = "text-[11px] font-extrabold bg-toss-bg dark:bg-[#2C2C2E] text-toss-subtext px-3 py-1.5 rounded-full transition-colors";
+                wvContainer.classList.add('hidden');
+            } else {
+                wvBtn.className = "text-[11px] font-extrabold bg-toss-blue text-white px-3 py-1.5 rounded-full transition-colors";
+                osrmBtn.className = "text-[11px] font-extrabold bg-toss-bg dark:bg-[#2C2C2E] text-toss-subtext px-3 py-1.5 rounded-full transition-colors";
+                wvContainer.classList.remove('hidden');
+                switchWebViewProvider('naver');
+            }
+        }
+
+        function switchWebViewProvider(provider) {
+            const iframe = document.getElementById('mapIframe');
+            const status = document.getElementById('webview-status-title');
+            const naverBtn = document.getElementById('wv-provider-naver');
+            const kakaoBtn = document.getElementById('wv-provider-kakao');
+
+            if (provider === 'naver') {
+                status.innerText = '네이버 지도 전국 웹뷰 연동';
+                iframe.src = 'https://m.map.naver.com';
+                naverBtn.className = "px-2 py-1 rounded bg-toss-blue text-white font-bold";
+                kakaoBtn.className = "px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 text-toss-text dark:text-white font-bold";
+            } else {
+                status.innerText = '카카오맵 전국 웹뷰 연동';
+                iframe.src = 'https://m.map.kakao.com';
+                kakaoBtn.className = "px-2 py-1 rounded bg-toss-blue text-white font-bold";
+                naverBtn.className = "px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 text-toss-text dark:text-white font-bold";
+            }
+        }
+
+        function openWebViewModal(url) {
+            const modal = document.getElementById('fullWebViewModal');
+            const container = document.getElementById('fullWebViewContainer');
+            const iframe = document.getElementById('fullIframe');
+            iframe.src = url;
+            modal.classList.remove('hidden');
+            setTimeout(() => container.classList.remove('translate-y-full'), 50);
+        }
+
+        function closeWebViewModal() {
+            const modal = document.getElementById('fullWebViewModal');
+            const container = document.getElementById('fullWebViewContainer');
+            container.classList.add('translate-y-full');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                document.getElementById('fullIframe').src = 'about:blank';
+            }, 300);
+        }
+
+        function initLeafletMap() {
+            if (map) { map.invalidateSize(); return; }
+
+            map = L.map('app-map', { zoomControl: false, attributionControl: false }).setView([currentLat, currentLng], 15);
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                className: 'leaflet-fade-anim'
+            }).addTo(map);
+
+            const startIcon = L.divIcon({
+                className: 'custom-start-icon',
+                html: `
+                    <div class="relative flex items-center justify-center w-12 h-12">
+                        <div class="absolute inset-0 bg-toss-blue/30 rounded-full pulse-circle"></div>
+                        <div id="heading-cone" class="absolute inset-0 transition-transform duration-300 origin-center hidden" style="transform: rotate(0deg);">
+                            <div class="absolute top-[2px] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-b-[20px] border-b-toss-blue/60"></div>
+                        </div>
+                        <div class="w-5 h-5 bg-toss-blue rounded-full border-2 border-white shadow-md z-10"></div>
+                    </div>
+                `,
+                iconSize: [48, 48],
+                iconAnchor: [24, 24]
+            });
+
+            startMarker = L.marker([currentLat, currentLng], { icon: startIcon, zIndexOffset: 1000 }).addTo(map);
+
+            map.on('click', (e) => {
+                if(isNavigating) return;
+                setDestination(e.latlng.lat, e.latlng.lng, "지도 선택 장소");
+            });
+
+            getUserLocation(true);
+        }
+
+        function getUserLocation(init = false) {
+            if (!navigator.geolocation) return showToast("GPS를 지원하지 않습니다.");
+            
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    currentLat = pos.coords.latitude;
+                    currentLng = pos.coords.longitude;
+                    if (map && startMarker) {
+                        startMarker.setLatLng([currentLat, currentLng]);
+                        if (!isDestSet || init) map.setView([currentLat, currentLng], 15);
+                    }
+                    if (!init) showToast("내 위치가 업데이트되었습니다.");
+                    if (isDestSet && !isNavigating) calculateRealRoute();
+                },
+                (err) => showToast("위치 권한을 확인해주세요."),
+                { enableHighAccuracy: true, timeout: 5000 }
+            );
+        }
+
+        function handleDestSearchInput(val) {
+            const clearBtn = document.getElementById('clearDestBtn');
+            const sugBox = document.getElementById('searchSuggestions');
+            
+            if (!val.trim()) {
+                clearBtn.classList.add('hidden');
+                sugBox.classList.add('hidden');
+                return;
+            }
+            clearBtn.classList.remove('hidden');
+
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(async () => {
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&countrycodes=kr&limit=5&accept-language=ko`);
+                    const data = await res.json();
+                    
+                    if (data.length > 0) {
+                        sugBox.innerHTML = data.map(item => {
+                            const name = item.display_name.split(',')[0].trim();
+                            const addr = item.display_name.split(',').slice(1,3).join(', ').trim();
+                            return `
+                            <div onclick="setDestination(${item.lat}, ${item.lon}, '${name.replace(/'/g, "")}')" class="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer border-b border-gray-100 dark:border-gray-800 flex items-center gap-3 active:bg-gray-100">
+                                <div class="w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center shrink-0 text-toss-subtext text-xs"><i class="fa-solid fa-location-dot"></i></div>
+                                <div class="flex-1 overflow-hidden">
+                                    <div class="font-bold text-[14px] text-toss-text dark:text-white truncate">${name}</div>
+                                    <div class="text-[11px] text-toss-subtext truncate mt-0.5">${addr}</div>
+                                </div>
+                            </div>
+                            `;
+                        }).join('');
+                        sugBox.classList.remove('hidden');
+                    } else {
+                        sugBox.innerHTML = '<div class="p-3 text-center text-xs text-gray-500">검색 결과가 없습니다.</div>';
+                        sugBox.classList.remove('hidden');
+                    }
+                } catch(e) { console.error(e); }
+            }, 350);
+        }
+
+        function setQuickDest(name, lat, lng) {
+            document.getElementById('destInput').value = name;
+            setDestination(lat, lng, name);
+        }
+
+        function setDestination(lat, lng, name) {
+            destLat = parseFloat(lat); destLng = parseFloat(lng); isDestSet = true;
+            document.getElementById('destInput').value = name;
+            document.getElementById('searchSuggestions').classList.add('hidden');
+            document.getElementById('clearDestBtn').classList.remove('hidden');
+            document.getElementById('destInput').blur();
+
+            if (destMarker) map.removeLayer(destMarker);
+
+            const destIcon = L.divIcon({
+                className: 'custom-dest-icon',
+                html: `<div class="w-8 h-8 bg-toss-text dark:bg-white text-white dark:text-toss-text rounded-full flex items-center justify-center shadow-lg transform -translate-y-4 font-black"><i class="fa-solid fa-flag-checkered"></i></div>`,
+                iconSize: [32, 32],
+                iconAnchor: [16, 32]
+            });
+            destMarker = L.marker([destLat, destLng], { icon: destIcon }).addTo(map).bindPopup(name).openPopup();
+            
+            calculateRealRoute();
+        }
+
+        function clearDestInput() {
+            document.getElementById('destInput').value = '';
+            document.getElementById('clearDestBtn').classList.add('hidden');
+            document.getElementById('searchSuggestions').classList.add('hidden');
+            document.getElementById('routeResult').classList.add('hidden');
+            document.getElementById('routeResult').classList.remove('flex');
+            isDestSet = false;
+            if (destMarker) map.removeLayer(destMarker);
+            if (routePolyline) map.removeLayer(routePolyline);
+            map.setView([currentLat, currentLng], 15);
+        }
+
+        async function calculateRealRoute() {
+            if (!isDestSet) return;
+            showToast("최적 경로 및 대중교통 환승 탐색 중...");
+
+            try {
+                const [walk, bike, car] = await Promise.all([
+                    fetch(`https://router.project-osrm.org/route/v1/foot/${currentLng},${currentLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true`).then(r=>r.json()),
+                    fetch(`https://router.project-osrm.org/route/v1/bike/${currentLng},${currentLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true`).then(r=>r.json()),
+                    fetch(`https://router.project-osrm.org/route/v1/driving/${currentLng},${currentLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true`).then(r=>r.json())
+                ]);
+
+                if(car.code !== 'Ok') throw new Error("Route not found");
+
+                const wRoute = walk.routes[0];
+                const bRoute = bike.routes[0];
+                const cRoute = car.routes[0];
+                const distKm = (cRoute.distance / 1000).toFixed(1);
+                
+                // --- 대중교통 상세 실시간 경로 생성 (하차역 및 승/하차 안내 포함) ---
+                const transitDistKm = (cRoute.distance / 1000).toFixed(1);
+                const transitTime = Math.max(6, Math.round(transitDistKm * 3.5 + 8));
+                const transferCount = Math.floor(cRoute.distance / 15000); 
+                const fare = 1400 + Math.max(0, Math.floor((cRoute.distance/1000 - 10)/5)*100);
+
+                const destName = document.getElementById('destInput').value || '목적지';
+
+                // 대중교통 GPS 단계별 안내 스텝 구성
+                const transitSteps = [
+                    { 
+                        type: 'walk', 
+                        instruction: '출발지에서 승차 정류장까지 도보 이동', 
+                        distance: 300, 
+                        time: 4, 
+                        icon: 'fa-person-walking', 
+                        color: 'text-toss-subtext',
+                        maneuver: { location: [currentLng + (destLng - currentLng)*0.1, currentLat + (destLat - currentLat)*0.1], instruction: '승차 정류장까지 도보 이동' }
+                    },
+                    { 
+                        type: transferCount > 0 ? 'subway' : 'bus', 
+                        instruction: transferCount > 0 ? '지하철 탑승' : '버스 탑승', 
+                        name: transferCount > 0 ? '수도권 2호선' : '간선 741번', 
+                        boardStation: '인근 정류장/역',
+                        getOffStation: transferCount > 0 ? `${destName} 인근 환승역` : `${destName} 정류장`,
+                        getOffDetail: transferCount > 0 ? '오른쪽 내림 · 빠른환승 2-1' : '3개 정류장 이동 후 하차',
+                        distance: (cRoute.distance * 0.45), 
+                        time: Math.round(transitTime * 0.45), 
+                        icon: transferCount > 0 ? 'fa-train-subway' : 'fa-bus', 
+                        color: transferCount > 0 ? 'text-green-500' : 'text-blue-500',
+                        maneuver: { location: [currentLng + (destLng - currentLng)*0.55, currentLat + (destLat - currentLat)*0.55], instruction: transferCount > 0 ? `${destName} 인근 환승역 하차` : `${destName} 정류장 하차` }
+                    }
+                ];
+
+                if (transferCount > 0) {
+                    transitSteps.push({ 
+                        type: 'transfer', 
+                        instruction: '지하철 환승 이동', 
+                        distance: 180, 
+                        time: 3, 
+                        icon: 'fa-person-walking', 
+                        color: 'text-toss-subtext',
+                        maneuver: { location: [currentLng + (destLng - currentLng)*0.6, currentLat + (destLat - currentLat)*0.6], instruction: '환승 통로 이동' }
+                    });
+                    transitSteps.push({ 
+                        type: 'bus', 
+                        instruction: '지선버스 환승 탑승', 
+                        name: '지선 3412번', 
+                        boardStation: '환승 정류장',
+                        getOffStation: `${destName} 정류장`,
+                        getOffDetail: '2개 정류장 이동 후 하차 (하차문 준비)',
+                        distance: (cRoute.distance * 0.35), 
+                        time: Math.round(transitTime * 0.35), 
+                        icon: 'fa-bus', 
+                        color: 'text-green-600',
+                        maneuver: { location: [currentLng + (destLng - currentLng)*0.9, currentLat + (destLat - currentLat)*0.9], instruction: `${destName} 정류장 하차` }
+                    });
+                }
+
+                transitSteps.push({ 
+                    type: 'walk', 
+                    instruction: '정류장에서 목적지까지 도보 이동', 
+                    distance: 250, 
+                    time: 3, 
+                    icon: 'fa-flag-checkered', 
+                    color: 'text-toss-subtext',
+                    maneuver: { location: [destLng, destLat], instruction: `${destName} 도착` }
+                });
+
+                calculatedRouteData = {
+                    transit: { 
+                        distanceKm: transitDistKm,
+                        durationMin: transitTime,
+                        geometry: cRoute.geometry,
+                        steps: transitSteps,
+                        info: `환승 ${transferCount}회 · 예상 요금 약 ${fare.toLocaleString()}원`,
+                        isTransit: true
+                    },
+                    car: {
+                        distanceKm: distKm,
+                        durationMin: Math.max(1, Math.round((cRoute.distance/1000)/25 * 60)),
+                        geometry: cRoute.geometry,
+                        steps: cRoute.legs[0].steps,
+                        info: `예상 택시비 약 ${(4800 + distKm*1100).toLocaleString()}원`
+                    },
+                    bike: {
+                        distanceKm: (bRoute.distance / 1000).toFixed(1),
+                        durationMin: Math.max(1, Math.round((bRoute.distance/1000)/15 * 60)),
+                        geometry: bRoute.geometry,
+                        steps: bRoute.legs[0].steps,
+                        info: `소모 칼로리 약 ${Math.round(bRoute.distance/1000 * 30)} kcal`
+                    },
+                    walk: {
+                        distanceKm: (wRoute.distance / 1000).toFixed(1),
+                        durationMin: Math.max(1, Math.round((wRoute.distance/1000)/4.5 * 60)),
+                        geometry: wRoute.geometry,
+                        steps: wRoute.legs[0].steps,
+                        info: `약 ${Math.round(wRoute.distance/1000 * 1400)} 걸음 소요`
+                    }
+                };
+
+                document.getElementById('routeResult').classList.remove('hidden');
+                document.getElementById('routeResult').classList.add('flex');
+                
+                selectTransportMode(currentTransportMode);
+
+            } catch (e) {
+                console.error(e);
+                showToast("경로 탐색 실패: 위치 및 인터넷 연결을 확인하세요.");
+            }
+        }
+
+        function selectTransportMode(mode) {
+            currentTransportMode = mode;
+            ['transit', 'car', 'bike', 'walk'].forEach(m => {
+                const btn = document.getElementById(`mode-${m}`);
+                if (m === mode) {
+                    btn.classList.add('bg-white', 'dark:bg-toss-darkCard', 'text-toss-blue', 'shadow-sm');
+                    btn.classList.remove('text-toss-subtext');
+                } else {
+                    btn.classList.remove('bg-white', 'dark:bg-toss-darkCard', 'text-toss-blue', 'shadow-sm');
+                    btn.classList.add('text-toss-subtext');
+                }
+            });
+            updateRouteUI();
+        }
+
+        function updateRouteUI() {
+            if (!calculatedRouteData) return;
+            const data = calculatedRouteData[currentTransportMode];
+            
+            // Apply human friendly formatted time: e.g. "1시간 20분", "45분"
+            document.getElementById('routeTime').innerText = formatDuration(data.durationMin);
+            document.getElementById('routeDistance').innerText = `${data.distanceKm}km`;
+            document.getElementById('routeExtraInfo').innerText = data.info;
+
+            const drawer = document.getElementById('stepDrawer');
+
+            if (data.isTransit) {
+                drawer.innerHTML = data.steps.map((s) => `
+                    <div class="flex items-start gap-3 py-2.5 border-b border-gray-100 dark:border-gray-800 last:border-0 pl-1">
+                        <div class="w-8 h-8 rounded-full bg-toss-bg dark:bg-[#2C2C2E] flex items-center justify-center ${s.color} shrink-0 text-[14px] mt-0.5">
+                            <i class="fa-solid ${s.icon}"></i>
+                        </div>
+                        <div class="flex-1 leading-tight">
+                            <div class="font-bold text-[13px] text-toss-text dark:text-white flex items-center gap-1.5 flex-wrap">
+                                <span>${s.instruction}</span>
+                                ${s.name ? `<span class="font-extrabold text-[11px] px-2 py-0.5 rounded-md bg-toss-blue/10 text-toss-blue">${s.name}</span>` : ''}
+                            </div>
+                            ${s.getOffStation ? `
+                                <div class="mt-1 p-2 bg-toss-lightBlue/60 dark:bg-toss-blue/20 rounded-lg border border-toss-blue/20 text-[12px] font-bold text-toss-blue">
+                                    <div class="flex items-center gap-1.5">
+                                        <i class="fa-solid fa-bell text-toss-red"></i>
+                                        <span>하차역/정류장: <b>${s.getOffStation}</b></span>
+                                    </div>
+                                    <div class="text-[11px] text-toss-subtext dark:text-gray-300 font-medium mt-0.5">${s.getOffDetail}</div>
+                                </div>
+                            ` : ''}
+                            <div class="text-[11px] font-medium text-toss-subtext mt-1">약 ${formatDuration(s.time)} 소요 · ${s.distance > 1000 ? (s.distance/1000).toFixed(1)+'km' : Math.round(s.distance)+'m'} 이동</div>
+                        </div>
+                    </div>
+                `).join('');
+                
+                drawer.classList.remove('hidden');
+            } else {
+                drawer.innerHTML = data.steps.map((s) => {
+                    const { icon, text } = parseOSRMManeuver(s.maneuver);
+                    return `
+                        <div class="flex items-center gap-3 py-2 border-b border-gray-100 dark:border-gray-800 last:border-0 pl-1">
+                            <div class="w-6 h-6 rounded-full bg-toss-bg dark:bg-[#2C2C2E] flex items-center justify-center text-toss-text dark:text-white shrink-0 text-xs">
+                                <i class="fa-solid ${icon}"></i>
+                            </div>
+                            <div class="flex-1 truncate leading-tight">
+                                <div class="font-bold text-[13px] text-toss-text dark:text-white">${text} ${s.name ? `<span class="font-normal text-toss-subtext text-[12px]">(${s.name})</span>` : ''}</div>
+                                <div class="text-[11px] text-toss-subtext mt-0.5">${s.distance > 1000 ? (s.distance/1000).toFixed(1)+'km' : Math.round(s.distance)+'m'} 이동</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                drawer.classList.add('hidden');
+            }
+
+            if (routePolyline) map.removeLayer(routePolyline);
+            
+            const coords = data.geometry.coordinates.map(c => [c[1], c[0]]);
+            let lineColor = '#3182F6';
+            let dashArray = null;
+            
+            if (currentTransportMode === 'walk') lineColor = '#20C997';
+            else if (currentTransportMode === 'bike') lineColor = '#F04452';
+            else if (currentTransportMode === 'transit') {
+                lineColor = '#8E54E9';
+                dashArray = '8, 8';
+            }
+            
+            routePolyline = L.polyline(coords, {
+                color: lineColor,
+                weight: 6,
+                opacity: 0.9,
+                lineCap: 'round',
+                lineJoin: 'round',
+                dashArray: dashArray
+            }).addTo(map);
+
+            map.fitBounds(routePolyline.getBounds(), { padding: [50, 50], animate: true });
+        }
+
+        function toggleStepDrawer() {
+            document.getElementById('stepDrawer').classList.toggle('hidden');
+        }
+
+        function parseOSRMManeuver(maneuver) {
+            let icon = 'fa-arrow-up';
+            let text = '직진';
+            if (!maneuver || !maneuver.type) return { icon, text: text };
+
+            const type = maneuver.type;
+            const mod = maneuver.modifier;
+
+            if (type === 'depart') { icon = 'fa-play'; text = '출발'; }
+            else if (type === 'arrive') { icon = 'fa-flag-checkered'; text = '도착'; }
+            else if (type.includes('turn')) {
+                if (mod === 'left' || mod === 'sharp left' || mod === 'slight left') { icon = 'fa-arrow-left'; text = '좌회전'; }
+                else if (mod === 'right' || mod === 'sharp right' || mod === 'slight right') { icon = 'fa-arrow-right'; text = '우회전'; }
+                else if (mod === 'uturn') { icon = 'fa-arrow-rotate-left'; text = '유턴'; }
+            }
+            return { icon, text: maneuver.instruction || text };
+        }
+
+        function startInAppNavigation() {
+            if (!calculatedRouteData || !isDestSet) return showToast("목적지를 설정하세요.");
+            
+            const data = calculatedRouteData[currentTransportMode];
+            activeNavSteps = data.steps;
+            if(!activeNavSteps || activeNavSteps.length === 0) return showToast("경로 스텝이 없습니다.");
+
+            isNavigating = true;
+            currentStepIndex = 0;
+            getOffAlertedSet.clear();
+
+            document.body.classList.add('nav-active');
+            document.getElementById('navOverlay').classList.remove('hidden');
+
+            if ('wakeLock' in navigator) navigator.wakeLock.request('screen').then(l => wakeLock = l).catch(()=>{});
+
+            map.setZoom(18, {animate: true});
+            document.querySelector('.custom-start-icon #heading-cone').classList.remove('hidden');
+
+            const arrival = new Date(Date.now() + data.durationMin * 60000);
+            document.getElementById('navArrival').innerText = `${arrival.getHours().toString().padStart(2,'0')}:${arrival.getMinutes().toString().padStart(2,'0')}`;
+            
+            updateNavigationUI(data.distanceKm * 1000, 0);
+
+            navWatchId = navigator.geolocation.watchPosition(
+                processNavPositionUpdate,
+                (err) => console.warn("GPS Weak"),
+                { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+            );
+
+            showToast(currentTransportMode === 'transit' ? "🚌 대중교통 하차알림 GPS 안내를 시작합니다." : "🧭 실시간 GPS 내비게이션을 시작합니다.");
+        }
+
+        function processNavPositionUpdate(pos) {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            const speedMs = pos.coords.speed || 0;
+            const speedKmh = Math.round(speedMs * 3.6);
+
+            currentLat = lat; currentLng = lng;
+            const currentPt = L.latLng(lat, lng);
+            
+            startMarker.setLatLng([lat, lng]);
+            map.panTo([lat, lng], { animate: true, duration: 1.0 });
+
+            document.getElementById('navCurrentSpeed').innerText = speedKmh;
+
+            let targetStep = activeNavSteps[currentStepIndex];
+            if (!targetStep && currentStepIndex >= activeNavSteps.length - 1) {
+                const distToDest = currentPt.distanceTo(L.latLng(destLat, destLng));
+                updateNavigationUI(distToDest, speedKmh);
+                if (distToDest < 25) {
+                    playGetOffChimeSound();
+                    showToast("🎉 목적지에 도착했습니다!");
+                    stopInAppNavigation();
+                }
+                return;
+            }
+
+            const targetPt = targetStep.maneuver ? L.latLng(targetStep.maneuver.location[1], targetStep.maneuver.location[0]) : L.latLng(destLat, destLng);
+            const distToNextManeuver = currentPt.distanceTo(targetPt);
+
+            // --- 하차 알림 스마트 근접 감지 (Target Get-off Station Proximity Alert) ---
+            const alertBanner = document.getElementById('getOffAlertBanner');
+            const alertText = document.getElementById('getOffAlertText');
+
+            if (targetStep.getOffStation) {
+                // 300m 이내로 하차역에 접근하면 하차알림 작동
+                if (distToNextManeuver <= 300 && !getOffAlertedSet.has(currentStepIndex)) {
+                    getOffAlertedSet.add(currentStepIndex);
+                    playGetOffChimeSound();
+                    alertText.innerText = `🚨 잠시 후 [${targetStep.getOffStation}] 하차하세요!`;
+                    alertBanner.classList.remove('hidden');
+                    showToast(`🚨 [${targetStep.getOffStation}] 하차 준비하세요!`);
+                }
+            } else if (!targetStep.getOffStation && alertBanner) {
+                alertBanner.classList.add('hidden');
+            }
+
+            let totalRemainingDist = distToNextManeuver;
+            for(let i = currentStepIndex + 1; i < activeNavSteps.length; i++) {
+                totalRemainingDist += activeNavSteps[i].distance;
+            }
+
+            updateNavigationUI(totalRemainingDist, speedKmh, targetStep, distToNextManeuver);
+
+            if (distToNextManeuver < 20) {
+                currentStepIndex++;
+            }
+        }
+
+        function updateNavigationUI(totalDistM, speedKmh, nextStep = null, distToNextM = 0) {
+            const distStr = totalDistM > 1000 ? (totalDistM/1000).toFixed(1) + 'km' : Math.round(totalDistM) + 'm';
+            document.getElementById('navDistLeft').innerText = distStr;
+
+            let assumedSpeedKmh = currentTransportMode === 'walk' ? 4 : (currentTransportMode === 'bike' ? 15 : 30);
+            if(speedKmh > 5) assumedSpeedKmh = speedKmh;
+            
+            const minsLeft = Math.max(1, Math.round((totalDistM/1000) / assumedSpeedKmh * 60));
+            // Apply human friendly time display
+            document.getElementById('navTimeLeft').innerText = formatDuration(minsLeft);
+
+            const turnIconEl = document.getElementById('navTurnIcon');
+            const turnDescEl = document.getElementById('navTurnDesc');
+            const turnSubDescEl = document.getElementById('navSubDesc');
+            const turnDistEl = document.getElementById('navTurnDist');
+            const turnUnitEl = document.getElementById('navTurnUnit');
+
+            if (nextStep) {
+                if (currentTransportMode === 'transit') {
+                    turnIconEl.innerHTML = `<i class="fa-solid ${nextStep.icon}"></i>`;
+                    turnDescEl.innerText = nextStep.instruction + (nextStep.name ? ` (${nextStep.name})` : '');
+                    
+                    if (nextStep.getOffStation) {
+                        turnSubDescEl.innerText = `하차역: ${nextStep.getOffStation}`;
+                    } else {
+                        turnSubDescEl.innerText = '';
+                    }
+                } else {
+                    const { icon, text } = parseOSRMManeuver(nextStep.maneuver);
+                    turnIconEl.innerHTML = `<i class="fa-solid ${icon}"></i>`;
+                    turnDescEl.innerText = text + (nextStep.name ? ` (${nextStep.name})` : '');
+                    turnSubDescEl.innerText = '';
+                }
+
+                if (distToNextM > 1000) {
+                    turnDistEl.innerText = (distToNextM/1000).toFixed(1);
+                    turnUnitEl.innerText = 'km';
+                } else {
+                    turnDistEl.innerText = Math.round(distToNextM/10)*10;
+                    turnUnitEl.innerText = 'm';
+                }
+
+                const progressPct = Math.max(0, Math.min(100, 100 - (distToNextM / 300 * 100)));
+                document.getElementById('navProgressBar').style.width = `${progressPct}%`;
+            }
+        }
+
+        function stopInAppNavigation() {
+            isNavigating = false;
+            document.body.classList.remove('nav-active');
+            document.getElementById('navOverlay').classList.add('hidden');
+            document.getElementById('getOffAlertBanner').classList.add('hidden');
+            
+            if (navWatchId) navigator.geolocation.clearWatch(navWatchId);
+            if (wakeLock) wakeLock.release().catch(()=>{});
+
+            document.querySelector('.custom-start-icon #heading-cone').classList.add('hidden');
+            if (routePolyline) map.fitBounds(routePolyline.getBounds(), { padding: [50, 50], animate: true });
+            showToast("안내를 종료했습니다.");
+        }
+
+        // --- Dutch Pay Logic ---
+        function adjustDutchPeople(delta) {
+            dutchPeople = Math.max(1, dutchPeople + delta);
+            document.getElementById('dutchPeopleCount').innerText = `${dutchPeople}명`;
+            calculateDutch();
+        }
+        function setDutchRound(unit) {
+            dutchRoundUnit = unit;
+            [1, 100, 1000].forEach(u => {
+                const btn = document.getElementById(`round-${u}`);
+                if (u === unit) btn.className = "py-2.5 rounded-toss-sm bg-toss-blue text-white shadow-sm transition-all";
+                else btn.className = "py-2.5 rounded-toss-sm bg-toss-bg dark:bg-[#2C2C2E] text-toss-subtext transition-all";
+            });
+            calculateDutch();
+        }
+        function calculateDutch() {
+            const total = parseInt(document.getElementById('dutchTotal').value) || 0;
+            if(total <= 0) {
+                document.getElementById('dutchPerPerson').innerText = "0 원";
+                document.getElementById('dutchRemainder').innerText = "잔액 0원";
+                return;
+            }
+            const raw = total / dutchPeople;
+            const perPerson = Math.floor(raw / dutchRoundUnit) * dutchRoundUnit;
+            const rem = total - (perPerson * dutchPeople);
+            document.getElementById('dutchPerPerson').innerText = `${perPerson.toLocaleString()} 원`;
+            document.getElementById('dutchRemainder').innerText = `잔액 ${rem.toLocaleString()}원`;
+        }
+        function copyDutchShareText() {
+            const total = parseInt(document.getElementById('dutchTotal').value)||0;
+            if(!total) return showToast("금액을 입력하세요.");
+            const p = document.getElementById('dutchPerPerson').innerText;
+            const r = document.getElementById('dutchRemainder').innerText;
+            const t = `[LifeKit N빵 정산 요청]\n💸 총 금액: ${total.toLocaleString()}원\n👥 인원: ${dutchPeople}명\n💰 1인당 송금액: ${p}\n(${r})`;
+            
+            const textArea = document.createElement("textarea");
+            textArea.value = t;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast("카톡 공유 문구가 복사되었습니다.");
+            } catch (err) {
+                showToast("복사 권한 오류");
+            }
+            document.body.removeChild(textArea);
+        }
+
+        // --- Wage Calculator Logic ---
+        let currentTaxType = '4ins';
+        function setTaxType(type) {
+            currentTaxType = type;
+            const b4 = document.getElementById('tax-4ins');
+            const b3 = document.getElementById('tax-33tax');
+            if (type === '4ins') {
+                b4.className = "py-2.5 rounded-toss-sm bg-toss-blue text-white shadow-sm transition-all";
+                b3.className = "py-2.5 rounded-toss-sm bg-toss-bg dark:bg-[#2C2C2E] text-toss-subtext transition-all";
+            } else {
+                b3.className = "py-2.5 rounded-toss-sm bg-toss-blue text-white shadow-sm transition-all";
+                b4.className = "py-2.5 rounded-toss-sm bg-toss-bg dark:bg-[#2C2C2E] text-toss-subtext transition-all";
+            }
+            calculateWage();
+        }
+
+        function calculateWage() {
+            const h = parseFloat(document.getElementById('wageHourly').value) || 0;
+            const w = parseFloat(document.getElementById('wageHoursPerWeek').value) || 0;
+            const wm = parseFloat(document.getElementById('wageWeeksPerMonth').value) || 4.345;
+            const isW = document.getElementById('wageWeeklyAllowance').checked;
+            
+            const base = (w * wm) * h;
+            let weekAll = 0;
+            if (isW && w >= 15) weekAll = (w / 40) * 8 * wm * h;
+            const gross = base + weekAll;
+            const taxRate = currentTaxType === '4ins' ? 0.094 : 0.033;
+            const tax = gross * taxRate;
+            const net = gross - tax;
+
+            document.getElementById('wageBaseAmount').innerText = Math.round(base).toLocaleString() + ' 원';
+            document.getElementById('wageWeeklyAmount').innerText = '+' + Math.round(weekAll).toLocaleString() + ' 원';
+            document.getElementById('wageTaxAmount').innerText = '-' + Math.round(tax).toLocaleString() + ' 원';
+            document.getElementById('wageTotalAmount').innerText = Math.round(net).toLocaleString() + ' 원';
+        }
+
+        // --- D-Day Logic ---
+        let ddays = JSON.parse(localStorage.getItem('lk_ddays')) || [
+            { id: 1, title: '2026 수능', date: '2026-11-19' },
+            { id: 2, title: '100일 기념일 계산', date: '2026-05-18' }
+        ];
+        function renderDDays() {
+            const c = document.getElementById('ddayListContainer');
+            if(ddays.length===0) { c.innerHTML='<p class="text-center text-toss-subtext text-xs py-4">등록된 디데이가 없습니다.</p>'; return;}
+            const today = new Date(); today.setHours(0,0,0,0);
+            c.innerHTML = ddays.map(d => {
+                const tg = new Date(d.date); tg.setHours(0,0,0,0);
+                const diff = Math.ceil((tg - today)/(1000*60*60*24));
+                let str = diff===0 ? 'D-Day' : (diff>0 ? `D-${diff}` : `D+${Math.abs(diff)}`);
+                
+                const hundred = new Date(tg); hundred.setDate(hundred.getDate() + 99);
+                const hundredStr = `${hundred.getFullYear()}.${hundred.getMonth()+1}.${hundred.getDate()}`;
+
+                return `
+                    <div class="bg-white dark:bg-toss-darkCard border border-gray-100 dark:border-gray-800 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                        <div>
+                            <div class="font-bold text-[15px]">${d.title}</div>
+                            <div class="text-[11px] text-toss-subtext mt-0.5">${d.date} · 100일: ${hundredStr}</div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="font-black text-[20px] text-toss-blue">${str}</span>
+                            <button onclick="delDDay(${d.id})" class="text-gray-400 p-1 active:scale-90"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+        function addDDayItem() {
+            const t = document.getElementById('ddayTitle').value.trim();
+            const d = document.getElementById('ddayTargetDate').value;
+            if(!t || !d) return showToast("제목과 날짜를 입력하세요.");
+            ddays.push({ id: Date.now(), title: t, date: d });
+            localStorage.setItem('lk_ddays', JSON.stringify(ddays));
+            document.getElementById('ddayTitle').value=''; document.getElementById('ddayTargetDate').value='';
+            renderDDays(); showToast("D-Day 등록 완료!");
+        }
+        function delDDay(id) {
+            ddays = ddays.filter(x => x.id !== id);
+            localStorage.setItem('lk_ddays', JSON.stringify(ddays));
+            renderDDays();
+        }
+
+        // --- Pomodoro & Audio Noise Generator ---
+        let pomoSec = 25 * 60;
+        let pomoTimer = null;
+        let isPomoRunning = false;
+        let noiseNode = null;
+        let noiseType = null;
+
+        function togglePomoTimer() {
+            const btn = document.getElementById('pomoStartBtn');
+            if (isPomoRunning) {
+                clearInterval(pomoTimer);
+                isPomoRunning = false;
+                btn.innerText = "일시정지됨";
+            } else {
+                isPomoRunning = true;
+                btn.innerText = "정지";
+                pomoTimer = setInterval(() => {
+                    pomoSec--;
+                    if (pomoSec <= 0) {
+                        clearInterval(pomoTimer);
+                        isPomoRunning = false;
+                        showToast("🎉 포모도로 집중 시간이 완료되었습니다!");
+                        pomoSec = 25 * 60;
+                    }
+                    updatePomoDisplay();
+                }, 1000);
+            }
+        }
+        function resetPomoTimer() {
+            clearInterval(pomoTimer);
+            isPomoRunning = false;
+            pomoSec = 25 * 60;
+            document.getElementById('pomoStartBtn').innerText = "시작";
+            updatePomoDisplay();
+        }
+        function updatePomoDisplay() {
+            const m = Math.floor(pomoSec / 60).toString().padStart(2, '0');
+            const s = (pomoSec % 60).toString().padStart(2, '0');
+            document.getElementById('pomoDisplay').innerText = `${m}:${s}`;
+        }
+
+        function toggleNoise(type) {
+            if (noiseType === type) {
+                stopNoise();
+                return;
+            }
+            stopNoise();
+            
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const bufferSize = audioCtx.sampleRate * 2;
+            const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            
+            let lastOut = 0.0;
+            for (let i = 0; i < bufferSize; i++) {
+                const white = Math.random() * 2 - 1;
+                if (type === 'rain') {
+                    output[i] = (lastOut + (0.02 * white)) / 1.02;
+                    lastOut = output[i];
+                    output[i] *= 3.5;
+                } else {
+                    output[i] = white * 0.15;
+                }
+            }
+
+            noiseNode = audioCtx.createBufferSource();
+            noiseNode.buffer = noiseBuffer;
+            noiseNode.loop = true;
+            noiseNode.connect(audioCtx.destination);
+            noiseNode.start();
+            noiseType = type;
+
+            document.getElementById(`noise-${type}`).classList.add('bg-toss-blue', 'text-white');
+            showToast(`${type === 'rain' ? '빗소리' : '핑크 노이즈'} 재생 시작`);
+        }
+
+        function stopNoise() {
+            if (noiseNode) {
+                noiseNode.stop();
+                noiseNode.disconnect();
+                noiseNode = null;
+            }
+            ['rain', 'white'].forEach(t => {
+                const btn = document.getElementById(`noise-${t}`);
+                if(btn) btn.className = "p-3 rounded-toss-sm bg-toss-bg dark:bg-[#2C2C2E] flex items-center justify-between active:scale-95 transition-transform";
+            });
+            noiseType = null;
+        }
+
+        // --- Habit Tracker Logic ---
+        let habits = JSON.parse(localStorage.getItem('lk_habits')) || [
+            { id: 1, title: '물 2L 마시기', streak: 3, doneToday: false },
+            { id: 2, title: '매일 영양제 챙겨먹기', streak: 5, doneToday: true }
+        ];
+
+        function renderHabits() {
+            const list = document.getElementById('habitList');
+            if(habits.length === 0) {
+                list.innerHTML = '<p class="text-center text-toss-subtext text-xs py-4">등록된 습관이 없습니다.</p>';
+                return;
+            }
+            list.innerHTML = habits.map(h => `
+                <div class="bg-toss-bg dark:bg-[#2C2C2E] p-4 rounded-toss-sm flex justify-between items-center">
+                    <div>
+                        <div class="font-bold text-[15px] ${h.doneToday ? 'line-through text-toss-subtext' : ''}">${h.title}</div>
+                        <div class="text-[11px] font-bold text-toss-blue mt-0.5">🔥 ${h.streak}일째 연속 달성 중</div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="toggleHabitDone(${h.id})" class="w-10 h-10 rounded-full ${h.doneToday ? 'bg-toss-green text-white' : 'bg-white dark:bg-toss-darkCard text-gray-300'} shadow-sm font-bold text-lg active:scale-90 transition-transform">
+                            <i class="fa-solid fa-check"></i>
+                        </button>
+                        <button onclick="delHabit(${h.id})" class="text-gray-400 p-2"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addHabit() {
+            const input = document.getElementById('habitInput');
+            if(!input.value.trim()) return showToast("습관 이름을 입력하세요.");
+            habits.push({ id: Date.now(), title: input.value.trim(), streak: 0, doneToday: false });
+            localStorage.setItem('lk_habits', JSON.stringify(habits));
+            input.value = '';
+            renderHabits();
+            showToast("새 습관 등록!");
+        }
+
+        function toggleHabitDone(id) {
+            habits = habits.map(h => {
+                if(h.id === id) {
+                    const done = !h.doneToday;
+                    return { ...h, doneToday: done, streak: done ? h.streak + 1 : Math.max(0, h.streak - 1) };
+                }
+                return h;
+            });
+            localStorage.setItem('lk_habits', JSON.stringify(habits));
+            renderHabits();
+        }
+
+        function delHabit(id) {
+            habits = habits.filter(h => h.id !== id);
+            localStorage.setItem('lk_habits', JSON.stringify(habits));
+            renderHabits();
+        }
+
+        // --- Cooking Unit Converter ---
+        function convertCook(source) {
+            let ml = 0;
+            if (source === 'tbsp') ml = (parseFloat(document.getElementById('cookTbsp').value)||0) * 15;
+            else if (source === 'tsp') ml = (parseFloat(document.getElementById('cookTsp').value)||0) * 5;
+            else if (source === 'cup') ml = (parseFloat(document.getElementById('cookCup').value)||0) * 180;
+            else if (source === 'ml') ml = parseFloat(document.getElementById('cookMl').value)||0;
+
+            if (source !== 'tbsp') document.getElementById('cookTbsp').value = (ml / 15).toFixed(1);
+            if (source !== 'tsp') document.getElementById('cookTsp').value = (ml / 5).toFixed(1);
+            if (source !== 'cup') document.getElementById('cookCup').value = (ml / 180).toFixed(1);
+            if (source !== 'ml') document.getElementById('cookMl').value = ml.toFixed(0);
+        }
+
+        // --- Random Picker & Pyung Converter ---
+        const randomMenus = ['김치찌개', '돈까스', '제육볶음', '짜장면', '초밥', '마라탕', '햄버거', '부대찌개', '쌀국수', '파스타', '떡볶이', '삼겹살'];
+        function pickRandomItem() {
+            const el = document.getElementById('randomResult');
+            let count = 0;
+            const timer = setInterval(() => {
+                el.innerText = randomMenus[Math.floor(Math.random() * randomMenus.length)];
+                count++;
+                if (count > 15) {
+                    clearInterval(timer);
+                    showToast("오늘의 메뉴 결정 완료!");
+                }
+            }, 80);
+        }
+
+        function convertPyung(source) {
+            if (source === 'pyung') {
+                const p = parseFloat(document.getElementById('pyungVal').value)||0;
+                document.getElementById('sqmVal').value = (p * 3.305785).toFixed(2);
+            } else {
+                const s = parseFloat(document.getElementById('sqmVal').value)||0;
+                document.getElementById('pyungVal').value = (s / 3.305785).toFixed(2);
+            }
+        }
+    </script>
+</body>
+</html>
