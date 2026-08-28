@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>LifeKit - Ultimate Smart Life Utility</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    },
+                    borderRadius: {
+                        '3xl': '1.5rem',
+                        '4xl': '2rem',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- FontAwesome & Google Fonts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+KR:wght@400;500;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Leaflet JS (No API Key Required Map) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', 'Noto Sans KR', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .touch-active:active {
+            transform: scale(0.95);
+            opacity: 0.85;
+            transition: transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.15s ease;
+        }
+
+        /* Fluid View Transitions */
+        .view-section {
+            display: none;
+            opacity: 0;
+            transform: translateX(20px);
+            transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        .view-section.active {
+            display: block;
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .view-section.flex-view.active {
+            display: flex;
+        }
+
+        /* Animations */
+        @keyframes modalPopIn {
+            0% { opacity: 0; transform: translateY(20px) scale(0.92); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .modal-animate-in { animation: modalPopIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        
+        @keyframes float-gentle {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-8px) rotate(3deg); }
+        }
+        .animate-float { animation: float-gentle 4s ease-in-out infinite; }
+        
+        @keyframes confetti-fall {
+            0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(500px) rotate(360deg); opacity: 0; }
+        }
+        .confetti-particle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: #f43f5e;
+            animation: confetti-fall 2.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+            z-index: 100;
+        }
+
+        .toast-enter { transform: translateY(-25px) scale(0.9); opacity: 0; }
+        .toast-active { transform: translateY(0) scale(1); opacity: 1; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .toast-exit { transform: translateY(-20px) scale(0.95); opacity: 0; transition: all 0.25s ease-in; }
+
+        .interactive-card {
+            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .interactive-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 25px -10px rgba(99, 102, 241, 0.15);
+        }
+
+        /* Map UI Fixes */
+        .leaflet-control-container .leaflet-routing-container-hide { display: none; }
+        .leaflet-bottom, .leaflet-top { z-index: 300 !important; }
+        .leaflet-container { font-family: 'Noto Sans KR', sans-serif; background: transparent; }
+        
+        /* Terminal Log Scroller */
+        .log-scroll::-webkit-scrollbar { width: 4px; }
+        .log-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 h-full flex justify-center items-center transition-colors duration-300 overflow-hidden" onload="initApp()">
+
+    <div id="toastContainer" class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2.5 w-[90%] max-w-sm pointer-events-none"></div>
+
+    <div id="appContainer" class="w-full h-full sm:max-w-md sm:h-[94vh] sm:rounded-[36px] bg-white dark:bg-slate-900 shadow-2xl flex flex-col relative overflow-hidden border-0 sm:border-8 border-slate-800 dark:border-slate-800 transition-all duration-300">
+        
+        <!-- App Header Bar -->
+        <header class="pt-3 pb-3 px-5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md sticky top-0 z-[500] border-b border-slate-100 dark:border-slate-800 flex items-center justify-between transition-all duration-300">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/25">
+                    <i class="fa-solid fa-mobile-screen-button text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-base font-extrabold leading-tight flex items-center gap-1.5">
+                        <span>LifeKit</span>
+                        <span id="headerUserBadge" class="text-[10px] bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 rounded-full font-bold transition-all duration-300"></span>
+                    </h1>
+                    <p class="text-xs text-slate-400 dark:text-slate-500" id="headerSubtext">APK 지원 라이프 유틸리티</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button onclick="openProfileModal()" class="p-2 w-9 h-9 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition duration-200 touch-active" title="설정">
+                    <i class="fa-solid fa-sliders"></i>
+                </button>
+                <button onclick="toggleTheme()" class="p-2 w-9 h-9 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 transition duration-200 touch-active" title="다크 모드">
+                    <i id="themeIcon" class="fa-solid fa-moon"></i>
+                </button>
+            </div>
+        </header>
+
+        <main id="mainContent" class="flex-1 overflow-y-auto no-scrollbar p-4 space-y-4 relative pb-20">
+            
+            <!-- SECTION 1: HOME DASHBOARD -->
+            <section id="view-home" class="view-section active space-y-4">
+                <div class="bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 text-white rounded-3xl p-5 shadow-xl shadow-indigo-500/15 relative overflow-hidden transition-all duration-300">
+                    <div class="absolute -right-6 -bottom-6 opacity-15 text-9xl pointer-events-none animate-float">
+                        <i class="fa-solid fa-android"></i>
+                    </div>
+                    <div class="relative z-10">
+                        <h2 class="text-base font-extrabold mb-1" id="homeGreeting">반갑습니다, 사용자님!</h2>
+                        <p class="text-xs text-indigo-100 opacity-90 mb-4">다양한 맞춤형 유틸리티를 활용하세요.</p>
+                        
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="switchTab('map')" class="bg-white/10 hover:bg-white/20 backdrop-blur-md text-white border border-white/20 py-2.5 px-3 rounded-2xl font-bold text-xs transition duration-200 touch-active flex items-center justify-center gap-1.5 shadow-sm">
+                                <i class="fa-solid fa-map-location-dot text-blue-300"></i> <span>2026 내비</span>
+                            </button>
+                            <button onclick="switchTab('school')" class="bg-white/10 hover:bg-white/20 backdrop-blur-md text-white border border-white/20 py-2.5 px-3 rounded-2xl font-bold text-xs transition duration-200 touch-active flex items-center justify-center gap-1.5 shadow-sm">
+                                <i class="fa-solid fa-school text-amber-300"></i> <span>학교 생활</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div onclick="addWaterIntake()" class="interactive-card bg-slate-50 dark:bg-slate-800/60 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 cursor-pointer touch-active relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-cyan-100/30 dark:bg-cyan-900/20 transform translate-y-full transition-transform duration-700 ease-out" id="waterFillBg"></div>
+                        <div class="relative z-10">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="w-8 h-8 rounded-2xl bg-cyan-100 dark:bg-cyan-900/40 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
+                                    <i class="fa-solid fa-droplet text-sm"></i>
+                                </div>
+                                <span class="text-xs font-bold text-cyan-600 dark:text-cyan-400" id="homeWaterPercent">0%</span>
+                            </div>
+                            <h3 class="text-xs font-bold text-slate-500 dark:text-slate-400">수분 섭취 (클릭)</h3>
+                            <p class="text-base font-extrabold mt-0.5 text-slate-800 dark:text-slate-100" id="homeWaterDisplay">0 / 2,000 ml</p>
+                        </div>
+                    </div>
+
+                    <div onclick="switchTab('habits')" class="interactive-card bg-slate-50 dark:bg-slate-800/60 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 cursor-pointer touch-active">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="w-8 h-8 rounded-2xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                                <i class="fa-solid fa-square-check text-sm"></i>
+                            </div>
+                            <span class="text-xs font-bold text-emerald-600 dark:text-emerald-400" id="homeHabitPercent">0%</span>
+                        </div>
+                        <h3 class="text-xs font-bold text-slate-500 dark:text-slate-400">데일리 루틴</h3>
+                        <p class="text-base font-extrabold mt-0.5 text-slate-800 dark:text-slate-100" id="homeHabitDisplay">0 / 0 완료</p>
+                    </div>
+                </div>
+
+                <div onclick="switchTab('expenses')" class="interactive-card bg-slate-50 dark:bg-slate-800/60 rounded-3xl p-4 border border-slate-100 dark:border-slate-800 cursor-pointer touch-active flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                            <i class="fa-solid fa-wallet text-base"></i>
+                        </div>
+                        <div>
+                            <h4 class="text-xs font-bold">내 지출 노트</h4>
+                            <p class="text-[11px] text-slate-400" id="homeExpenseCount">내역 없음</p>
+                        </div>
+                    </div>
+                    <span class="text-sm font-extrabold text-amber-600 dark:text-amber-400" id="homeExpenseTotal">₩0</span>
+                </div>
+            </section>
+
+            <!-- SECTION 2: SCHOOL LIFE -->
+            <section id="view-school" class="view-section space-y-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-base font-extrabold flex items-center gap-2">
+                            <span>학교 생활 파트너</span>
+                        </h2>
+                        <p class="text-xs text-slate-400">초/중/고 시간표 및 급식 확인</p>
+                    </div>
+                    <button onclick="openSchoolSearchModal()" class="bg-amber-500 hover:bg-amber-600 text-white text-xs px-3.5 py-2 rounded-2xl font-bold shadow-md touch-active transition duration-200">
+                        <i class="fa-solid fa-magnifying-glass"></i> 학교 설정
+                    </button>
+                </div>
+
+                <div class="bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-3xl p-4 shadow-lg flex items-center justify-between">
+                    <div class="flex items-center gap-3 w-[80%]">
+                        <div class="w-11 h-11 shrink-0 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-xl font-black">🏫</div>
+                        <div class="overflow-hidden">
+                            <h3 id="schoolCardTitle" class="text-sm font-black leading-tight truncate">학교를 등록해 주세요</h3>
+                            <p id="schoolCardSub" class="text-xs opacity-90 mt-0.5 truncate">설정 버튼을 눌러 연동하세요</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex bg-slate-200 dark:bg-slate-800 p-1 rounded-2xl">
+                    <button id="btnSubTabTimetable" onclick="switchSchoolSubTab('timetable')" class="flex-1 py-2 text-xs font-extrabold rounded-xl transition-all duration-300 bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm">
+                        시간표
+                    </button>
+                    <button id="btnSubTabMeals" onclick="switchSchoolSubTab('meals')" class="flex-1 py-2 text-xs font-extrabold rounded-xl transition-all duration-300 text-slate-600 dark:text-slate-400">
+                        급식 식단
+                    </button>
+                </div>
+
+                <div id="schoolSubViewTimetable" class="space-y-3 transition-all duration-300">
+                    <div id="timetableListContainer" class="space-y-2">
+                        <div class="text-center py-6 text-xs text-slate-400 font-bold bg-slate-50 dark:bg-slate-800/60 rounded-2xl">등록된 학교가 없습니다.</div>
+                    </div>
+                </div>
+
+                <div id="schoolSubViewMeals" class="hidden space-y-3 transition-all duration-300">
+                    <div id="mealListContainer" class="space-y-3">
+                        <div class="text-center py-6 text-xs text-slate-400 font-bold bg-slate-50 dark:bg-slate-800/60 rounded-2xl">등록된 학교가 없습니다.</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 3: MAP (GPS Navigation & Log) -->
+            <section id="view-map" class="view-section h-full w-full relative flex-col bg-slate-100 dark:bg-slate-900 rounded-[24px] overflow-hidden">
+                <!-- Map Container -->
+                <div id="mapContainer" class="absolute inset-0 z-10 w-full h-full"></div>
+                
+                <!-- Top overlay -->
+                <div class="absolute top-4 left-4 right-4 z-20 flex justify-between items-start pointer-events-none">
+                    <div class="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl p-3 shadow-lg pointer-events-auto border border-slate-200 dark:border-slate-700 flex flex-col">
+                        <h2 class="text-sm font-extrabold flex items-center gap-2 text-slate-800 dark:text-slate-100">
+                            <i class="fa-solid fa-satellite-dish text-blue-500 animate-pulse"></i> 2026 고정밀 내비
+                        </h2>
+                        <p id="mapStatusText" class="text-[10px] font-bold text-slate-400 mt-0.5">대기 중...</p>
+                    </div>
+                    <div class="flex flex-col gap-2 pointer-events-auto">
+                        <button onclick="recenterMap()" class="bg-white/95 dark:bg-slate-800/95 backdrop-blur-md w-10 h-10 rounded-2xl shadow-lg flex items-center justify-center touch-active border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
+                            <i class="fa-solid fa-location-crosshairs text-base"></i>
+                        </button>
+                        <button onclick="openSavedRoutesModal()" class="bg-indigo-600 text-white w-10 h-10 rounded-2xl shadow-lg flex items-center justify-center touch-active">
+                            <i class="fa-solid fa-list-ul text-sm"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Bottom Dashboard -->
+                <div class="absolute bottom-4 left-4 right-4 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-3xl p-4 shadow-2xl border border-slate-200 dark:border-slate-700 pointer-events-auto transition-all">
+                    <div class="grid grid-cols-2 gap-4 mb-3 divide-x divide-slate-200 dark:divide-slate-700">
+                        <div class="text-center">
+                            <div class="text-[10px] font-extrabold text-slate-400 mb-0.5">현재 속도</div>
+                            <div class="flex items-baseline justify-center gap-1">
+                                <span id="mapSpeedDisplay" class="text-3xl font-black text-blue-600 dark:text-blue-400 font-mono tracking-tighter">0.0</span>
+                                <span class="text-[10px] font-bold text-slate-500">km/h</span>
+                            </div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-[10px] font-extrabold text-slate-400 mb-0.5">주행/이동 거리</div>
+                            <div class="flex items-baseline justify-center gap-1">
+                                <span id="mapDistanceDisplay" class="text-3xl font-black text-indigo-600 dark:text-indigo-400 font-mono tracking-tighter">0.00</span>
+                                <span class="text-[10px] font-bold text-slate-500">km</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-2" id="mapActionBtns">
+                        <button onclick="toggleMapGps()" id="mapGpsToggleBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-3.5 rounded-2xl shadow-lg shadow-blue-500/25 touch-active transition duration-300 flex items-center justify-center gap-2 text-xs">
+                            <i class="fa-solid fa-play"></i> 경로 기록 시작
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 4: HABITS -->
+            <section id="view-habits" class="view-section space-y-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-base font-extrabold">데일리 습관 & 루틴</h2>
+                        <p class="text-xs text-slate-400">매일 목표를 달성해 보세요</p>
+                    </div>
+                    <button onclick="openAddHabitModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white w-9 h-9 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/25 touch-active transition duration-200">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
+                <div class="space-y-2.5" id="habitList"></div>
+            </section>
+
+            <!-- SECTION 5: EXPENSES -->
+            <section id="view-expenses" class="view-section space-y-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-base font-extrabold">스마트 가계부</h2>
+                        <p class="text-xs text-slate-400">수입과 지출을 깔끔하게 관리하세요</p>
+                    </div>
+                    <button onclick="openAddExpenseModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-2xl text-xs font-bold shadow-lg shadow-indigo-500/25 touch-active transition duration-200 flex items-center gap-1.5">
+                        <i class="fa-solid fa-plus"></i> 내역 추가
+                    </button>
+                </div>
+                
+                <!-- Financial Summary Card -->
+                <div class="bg-slate-900 text-white rounded-3xl p-5 shadow-xl relative overflow-hidden transition-all duration-300">
+                    <p class="text-xs text-slate-400 font-semibold mb-1">이번 달 자산 현황</p>
+                    <h3 class="text-2xl font-black text-white mb-4" id="monthBalanceAmount">₩0</h3>
+                    <div class="grid grid-cols-2 gap-4 border-t border-slate-700 pt-3">
+                        <div>
+                            <span class="text-[10px] text-slate-400 font-bold flex items-center gap-1"><i class="fa-solid fa-arrow-down text-emerald-400"></i> 총 수입</span>
+                            <span class="text-sm font-bold text-emerald-400 block mt-0.5" id="monthIncomeAmount">₩0</span>
+                        </div>
+                        <div>
+                            <span class="text-[10px] text-slate-400 font-bold flex items-center gap-1"><i class="fa-solid fa-arrow-up text-rose-400"></i> 총 지출</span>
+                            <span class="text-sm font-bold text-rose-400 block mt-0.5" id="monthExpenseAmount">₩0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="space-y-2" id="expenseList"></div>
+            </section>
+
+            <!-- SECTION 6: UTILITIES (Tools) -->
+            <section id="view-tools" class="view-section space-y-4">
+                <div>
+                    <h2 class="text-base font-extrabold">실생활 유틸리티</h2>
+                    <p class="text-xs text-slate-400">안전 및 편의 기능을 활용하세요</p>
+                </div>
+
+                <!-- URL Scanner (Enhanced) -->
+                <div class="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                            <i class="fa-solid fa-shield-virus text-rose-500"></i> 악성 URL 정밀 판독기
+                        </h3>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="text" id="urlInput" placeholder="URL 입력 (예: https://...)" class="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2 text-xs focus:outline-none transition">
+                        <button onclick="scanMaliciousUrl()" id="urlScanBtn" class="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-2xl text-xs font-bold touch-active transition min-w-[60px]">분석</button>
+                    </div>
+                    <!-- Terminal Style Log Display -->
+                    <div id="urlScanResult" class="hidden flex-col gap-2">
+                        <div class="bg-[#0f172a] text-emerald-400 font-mono text-[10px] p-3 rounded-2xl h-32 overflow-y-auto log-scroll text-left shadow-inner border border-slate-700 leading-relaxed" id="urlLogBox"></div>
+                        <div id="urlFinalVerdict" class="text-xs font-bold p-3 rounded-2xl text-center hidden"></div>
+                    </div>
+                </div>
+
+                <!-- D-Day -->
+                <div class="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                            <i class="fa-solid fa-hourglass-half text-indigo-500"></i> 정밀 D-Day 타이머
+                        </h3>
+                        <button onclick="openAddDDayModal()" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl font-bold touch-active transition duration-200">+ 추가</button>
+                    </div>
+                    <div id="ddayListContainer" class="space-y-2.5"></div>
+                </div>
+
+                <!-- Stopwatch -->
+                <div class="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                            <i class="fa-solid fa-stopwatch text-emerald-500"></i> 집중 스톱워치
+                        </h3>
+                        <span id="stopwatchDisplay" class="font-mono text-base font-extrabold text-emerald-600 dark:text-emerald-400">00:00.00</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="startStopwatch()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-xl text-xs font-bold touch-active transition duration-150">시작</button>
+                        <button onclick="pauseStopwatch()" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-xl text-xs font-bold touch-active transition duration-150">정지</button>
+                        <button onclick="resetStopwatch()" class="flex-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 py-2 rounded-xl text-xs font-bold touch-active transition duration-150">초기화</button>
+                    </div>
+                </div>
+
+                <!-- Password Gen -->
+                <div class="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                            <i class="fa-solid fa-key text-purple-500"></i> 보안 암호 생성기
+                        </h3>
+                        <button onclick="generateNewPassword()" class="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-xl font-bold touch-active transition duration-200">생성</button>
+                    </div>
+                    <div class="flex items-center gap-2 bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-700">
+                        <input type="text" id="passGenOutput" readonly class="flex-1 bg-transparent font-mono font-bold text-xs focus:outline-none text-purple-600 dark:text-purple-400" value="버튼을 누르세요">
+                        <button onclick="copyGeneratedPassword()" class="text-slate-400 hover:text-purple-500 p-1 touch-active transition" title="복사">
+                            <i class="fa-solid fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <nav class="absolute bottom-0 left-0 w-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-100 dark:border-slate-800 px-1 py-1.5 flex justify-between items-center z-[500] pb-safe">
+            <button onclick="switchTab('home')" id="nav-home" class="nav-btn w-[16%] flex flex-col items-center p-1 rounded-2xl transition-all duration-300 text-indigo-600 dark:text-indigo-400 font-extrabold scale-105 touch-active">
+                <i class="fa-solid fa-house text-lg mb-0.5"></i><span class="text-[9px]">홈</span>
+            </button>
+            <button onclick="switchTab('school')" id="nav-school" class="nav-btn w-[16%] flex flex-col items-center p-1 rounded-2xl transition-all duration-300 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-medium touch-active">
+                <i class="fa-solid fa-school text-lg mb-0.5"></i><span class="text-[9px]">학교</span>
+            </button>
+            <button onclick="switchTab('map')" id="nav-map" class="nav-btn w-[16%] flex flex-col items-center p-1 rounded-2xl transition-all duration-300 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-medium touch-active relative">
+                <i class="fa-solid fa-map-location-dot text-lg mb-0.5"></i><span class="text-[9px]">내비</span>
+            </button>
+            <button onclick="switchTab('habits')" id="nav-habits" class="nav-btn w-[16%] flex flex-col items-center p-1 rounded-2xl transition-all duration-300 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-medium touch-active">
+                <i class="fa-solid fa-square-check text-lg mb-0.5"></i><span class="text-[9px]">습관</span>
+            </button>
+            <button onclick="switchTab('expenses')" id="nav-expenses" class="nav-btn w-[16%] flex flex-col items-center p-1 rounded-2xl transition-all duration-300 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-medium touch-active">
+                <i class="fa-solid fa-wallet text-lg mb-0.5"></i><span class="text-[9px]">가계부</span>
+            </button>
+            <button onclick="switchTab('tools')" id="nav-tools" class="nav-btn w-[16%] flex flex-col items-center p-1 rounded-2xl transition-all duration-300 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-medium touch-active">
+                <i class="fa-solid fa-cubes text-lg mb-0.5"></i><span class="text-[9px]">도구</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- MODALS SECTION -->
+    <div id="onboardingModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[9000] hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[32px] p-6 shadow-2xl border border-slate-100 dark:border-slate-800 space-y-4 modal-animate-in">
+            <div class="text-center space-y-1">
+                <div class="w-14 h-14 bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 rounded-3xl mx-auto flex items-center justify-center text-2xl mb-2 animate-float">
+                    <i class="fa-solid fa-android"></i>
+                </div>
+                <h3 class="text-lg font-black">LifeKit 2026 시작하기</h3>
+                <p class="text-xs text-slate-400">네이티브 맞춤형 환경을 위해 입력해주세요.</p>
+            </div>
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300">이름 또는 닉네임</label>
+                    <input type="text" id="onboardName" placeholder="예: 홍길동" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3.5 py-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                </div>
+                <div>
+                    <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300">생년월일 (이벤트용)</label>
+                    <input type="date" id="onboardBirthdate" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3.5 py-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                </div>
+            </div>
+            <button onclick="saveOnboardingProfile()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3 rounded-2xl text-xs shadow-lg shadow-indigo-500/25 transition duration-200 touch-active">
+                시작하기
+            </button>
+        </div>
+    </div>
+
+    <div id="profileModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[8000] hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[32px] p-6 shadow-2xl modal-animate-in max-h-[90vh] overflow-y-auto no-scrollbar">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 mb-4">
+                <h3 class="text-base font-extrabold"><i class="fa-solid fa-sliders text-indigo-500 mr-2"></i> 설정 및 시스템 권한</h3>
+                <button onclick="closeModals()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="space-y-3 text-xs mb-4">
+                <div>
+                    <label class="block font-bold mb-1">이름</label>
+                    <input type="text" id="settingName" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2.5 font-bold focus:outline-none">
+                </div>
+                <div>
+                    <label class="block font-bold mb-1">생년월일</label>
+                    <input type="date" id="settingBirthdate" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2.5 font-bold focus:outline-none">
+                </div>
+            </div>
+            <div class="space-y-2 border-t border-slate-100 dark:border-slate-800 pt-3">
+                <span class="font-extrabold text-slate-700 dark:text-slate-300 block mb-1 text-xs">안드로이드 권한 (APK 연동)</span>
+                <div class="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-location-arrow text-blue-500"></i>
+                        <div>
+                            <strong class="block text-xs">GPS 위치 권한</strong>
+                            <span class="text-[10px] text-slate-400">내비 및 경로 추적용</span>
+                        </div>
+                    </div>
+                    <button onclick="requestLocationPerm()" class="px-3 py-1 rounded-xl text-[11px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 touch-active">요청</button>
+                </div>
+                <div class="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 mt-2">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-code text-indigo-500"></i>
+                        <div>
+                            <strong class="block text-xs">APK 개발자 가이드</strong>
+                            <span class="text-[10px] text-slate-400">CORS 및 HTTP 설정</span>
+                        </div>
+                    </div>
+                    <button onclick="openDevGuideModal()" class="px-3 py-1 rounded-xl text-[11px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 touch-active">보기</button>
+                </div>
+            </div>
+            <div class="flex gap-2 pt-4 mt-4 border-t border-slate-100 dark:border-slate-800">
+                <button onclick="saveProfileSettings()" class="flex-1 bg-indigo-600 text-white font-extrabold py-2.5 rounded-2xl text-xs touch-active">저장</button>
+                <button onclick="resetData()" class="px-4 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 font-bold py-2.5 rounded-2xl text-xs border border-rose-200 dark:border-rose-800 touch-active">데이터 초기화</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EXPENSE ADD MODAL -->
+    <div id="addExpenseModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[8000] hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[32px] p-6 shadow-2xl modal-animate-in">
+            <h3 class="text-base font-extrabold mb-4">가계부 내역 추가</h3>
+            
+            <div class="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl mb-4">
+                <button id="expTypeExpense" onclick="setExpenseType('expense')" class="flex-1 py-2 text-xs font-extrabold rounded-xl transition-all duration-300 bg-white dark:bg-slate-700 text-rose-500 shadow-sm touch-active">
+                    지출 (-)
+                </button>
+                <button id="expTypeIncome" onclick="setExpenseType('income')" class="flex-1 py-2 text-xs font-extrabold rounded-xl transition-all duration-300 text-slate-500 dark:text-slate-400 touch-active">
+                    수입 (+)
+                </button>
+            </div>
+            <input type="hidden" id="currentExpenseType" value="expense">
+
+            <div class="space-y-3 text-xs mb-4">
+                <input type="text" id="expenseTitleInput" placeholder="내역 (예: 편의점, 용돈)" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2.5 font-bold focus:outline-none">
+                <input type="number" id="expenseAmountInput" placeholder="금액(원)" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2.5 font-bold focus:outline-none">
+            </div>
+            <div class="flex gap-2">
+                <button onclick="saveNewExpense()" class="flex-1 bg-indigo-600 text-white font-bold py-2.5 rounded-2xl text-xs touch-active">저장</button>
+                <button onclick="closeModals()" class="px-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold py-2.5 rounded-2xl text-xs touch-active">취소</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SAVED ROUTES MODAL -->
+    <div id="savedRoutesModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[8000] hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[32px] p-6 shadow-2xl modal-animate-in max-h-[80vh] flex flex-col">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 mb-4 shrink-0">
+                <h3 class="text-base font-extrabold flex items-center gap-2"><i class="fa-solid fa-map text-blue-500"></i> 내비게이션 주행 기록</h3>
+                <button onclick="closeModals()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="savedRoutesList" class="overflow-y-auto space-y-2 no-scrollbar flex-1 pb-4">
+                <!-- Routes injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- SCHOOL & D-DAY & HABIT MODALS (Simplified for spacing, same functionality) -->
+    <div id="schoolSearchModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[8000] hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[32px] p-6 shadow-2xl modal-animate-in">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 mb-4"><h3 class="text-base font-extrabold"><i class="fa-solid fa-school text-amber-500 mr-2"></i> 학교 설정</h3><button onclick="closeModals()" class="text-slate-400 hover:text-slate-600 transition"><i class="fa-solid fa-xmark text-lg"></i></button></div>
+            <div class="space-y-3 text-xs"><div class="flex gap-2"><input type="text" id="schoolSearchInput" placeholder="예: 서울고" class="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2 font-bold focus:outline-none"><button onclick="searchSchoolNEIS()" class="bg-amber-500 text-white px-4 rounded-2xl font-bold touch-active">검색</button></div><div id="schoolSearchResultList" class="max-h-40 overflow-y-auto space-y-2 no-scrollbar"></div><div class="grid grid-cols-2 gap-2 hidden" id="schoolGradeClassArea"><div><label class="block font-bold mb-1">학년</label><select id="schoolGradeSelect" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2 font-bold focus:outline-none"><option value="1">1학년</option><option value="2">2학년</option><option value="3">3학년</option><option value="4">4학년</option><option value="5">5학년</option><option value="6">6학년</option></select></div><div><label class="block font-bold mb-1">반</label><select id="schoolClassSelect" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2 font-bold focus:outline-none"><option value="1">1반</option><option value="2">2반</option><option value="3">3반</option><option value="4">4반</option><option value="5">5반</option><option value="6">6반</option><option value="7">7반</option><option value="8">8반</option><option value="9">9반</option></select></div></div></div><button onclick="confirmSchoolSelection()" id="btnConfirmSchool" class="w-full bg-amber-500 text-white font-extrabold py-3 rounded-2xl text-xs mt-4 opacity-50 pointer-events-none transition">완료</button>
+        </div>
+    </div>
+    <div id="addDDayModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[8000] hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[32px] p-6 shadow-2xl modal-animate-in"><h3 class="text-base font-extrabold mb-4">D-Day 추가</h3><div class="space-y-3 text-xs mb-4"><input type="text" id="ddayTitleInput" placeholder="일정 이름" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2.5 font-bold focus:outline-none"><input type="date" id="ddayDateInput" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2.5 font-bold focus:outline-none"></div><div class="flex gap-2"><button onclick="saveNewDDay()" class="flex-1 bg-indigo-600 text-white font-bold py-2.5 rounded-2xl text-xs touch-active">저장</button><button onclick="closeModals()" class="px-4 bg-slate-100 dark:bg-slate-800 text-slate-600 font-bold py-2.5 rounded-2xl text-xs touch-active">취소</button></div></div>
+    </div>
+    <div id="addHabitModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[8000] hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[32px] p-6 shadow-2xl modal-animate-in"><h3 class="text-base font-extrabold mb-4">습관 추가</h3><input type="text" id="habitTitleInput" placeholder="예: 물 2리터 마시기" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-2.5 text-xs font-bold mb-4 focus:outline-none"><div class="flex gap-2"><button onclick="saveNewHabit()" class="flex-1 bg-indigo-600 text-white font-bold py-2.5 rounded-2xl text-xs touch-active">저장</button><button onclick="closeModals()" class="px-4 bg-slate-100 dark:bg-slate-800 text-slate-600 font-bold py-2.5 rounded-2xl text-xs touch-active">취소</button></div></div>
+    </div>
+
+    <!-- DEV GUIDE MODAL -->
+    <div id="devGuideModal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[9000] hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[32px] p-6 shadow-2xl modal-animate-in max-h-[90vh] overflow-y-auto no-scrollbar">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 mb-4">
+                <h3 class="text-base font-extrabold"><i class="fa-solid fa-code text-indigo-500 mr-2"></i> APK 개발자 연동 가이드</h3>
+                <button onclick="closeDevGuideModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="space-y-4 text-xs">
+                <div>
+                    <h4 class="font-bold text-rose-500 mb-1">1. CORS 제한 해결 방법</h4>
+                    <p class="text-slate-600 dark:text-slate-300 mb-2 leading-relaxed">안드로이드 앱 내부 웹뷰(WebView)에서 외부 API 호출 시 CORS 차단이 발생할 수 있습니다.</p>
+                    <div class="bg-slate-900 text-emerald-400 p-3 rounded-xl font-mono text-[10px] overflow-x-auto">
+                        webSettings.setAllowUniversalAccessFromFileURLs(true);
+                    </div>
+                </div>
+                <div>
+                    <h4 class="font-bold text-rose-500 mb-1">2. HTTP (Cleartext) 차단 해결</h4>
+                    <p class="text-slate-600 dark:text-slate-300 mb-2 leading-relaxed">안드로이드 9 이상에서는 암호화되지 않은 HTTP 통신이 기본 차단됩니다. (예: http://ianfette.org 검사 시)</p>
+                    <div class="bg-slate-900 text-emerald-400 p-3 rounded-xl font-mono text-[10px] overflow-x-auto">
+                        &lt;application<br>&nbsp;&nbsp;&nbsp;&nbsp;android:usesCleartextTraffic="true"<br>&nbsp;&nbsp;&nbsp;&nbsp;... &gt;
+                    </div>
+                </div>
+            </div>
+            <button onclick="closeDevGuideModal()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3 rounded-2xl text-xs mt-6 touch-active transition">확인</button>
+        </div>
+    </div>
+
+    <script>
+        const DB_KEY = 'lifeKit_db_v5';
+        let state = {
+            user: { name: '', birthdate: '' },
+            water: { date: '', amount: 0 },
+            habits: [],
+            expenses: [], // {id, title, amount, type:'income'|'expense', date}
+            school: null,
+            ddays: [],
+            routes: [] // {id, date, name, distance, path: []}
+        };
+        let selectedSchoolObj = null;
+
+        // Core Init with Android Bridge Support
+        function loadData() {
+            let raw = null;
+            if (window.Android && window.Android.loadData) {
+                raw = window.Android.loadData();
+            } else {
+                raw = localStorage.getItem(DB_KEY);
+            }
+            if(raw) {
+                try { state = JSON.parse(raw); } catch(e) {}
+            }
+            // Defaults migrations
+            if(!state.routes) state.routes = [];
+            const today = new Date().toDateString();
+            if(state.water.date !== today) state.water = { date: today, amount: 0 };
+            saveData();
+        }
+
+        function saveData() {
+            const dataStr = JSON.stringify(state);
+            if (window.Android && window.Android.saveData) {
+                window.Android.saveData(dataStr);
+            } else {
+                localStorage.setItem(DB_KEY, dataStr);
+            }
+        }
+
+        function initApp() {
+            loadData();
+            if(!state.user.name) {
+                document.getElementById('onboardingModal').classList.remove('hidden');
+            } else {
+                renderAll();
+            }
+        }
+
+        // UI Helpers
+        function showToast(msg) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = 'bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-md text-white px-4 py-3 rounded-2xl shadow-2xl text-xs font-bold flex items-center justify-between toast-enter border border-slate-700/50';
+            toast.innerHTML = `<span>${msg}</span>`;
+            container.appendChild(toast);
+            requestAnimationFrame(() => {
+                toast.classList.remove('toast-enter');
+                toast.classList.add('toast-active');
+            });
+            setTimeout(() => {
+                toast.classList.remove('toast-active');
+                toast.classList.add('toast-exit');
+                setTimeout(() => toast.remove(), 250);
+            }, 2600);
+        }
+
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+            const isDark = document.documentElement.classList.contains('dark');
+            document.getElementById('themeIcon').className = isDark ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+            if(map) updateMapTheme();
+        }
+
+        // Navigation (With Fluid Animations)
+        function switchTab(tabId) {
+            document.querySelectorAll('.view-section').forEach(el => {
+                el.classList.remove('active', 'flex-view');
+                el.style.transform = 'translateX(20px)'; // Reset position for entry
+            });
+            const targetEl = document.getElementById('view-' + tabId);
+            
+            const mainEl = document.getElementById('mainContent');
+            if(tabId === 'map') {
+                targetEl.classList.add('active', 'flex-view');
+                mainEl.classList.replace('p-4', 'p-0');
+                mainEl.classList.remove('space-y-4');
+                mainEl.classList.add('overflow-hidden');
+                if(!map) setTimeout(initMap, 100);
+                else setTimeout(() => map.invalidateSize(), 100);
+            } else {
+                targetEl.classList.add('active');
+                mainEl.classList.replace('p-0', 'p-4');
+                mainEl.classList.add('space-y-4');
+                mainEl.classList.remove('overflow-hidden');
+            }
+            
+            // Trigger animation
+            requestAnimationFrame(() => {
+                targetEl.style.transform = 'translateX(0)';
+            });
+            
+            document.querySelectorAll('.nav-btn').forEach(el => {
+                el.classList.remove('text-indigo-600', 'dark:text-indigo-400', 'font-extrabold', 'scale-105');
+                el.classList.add('text-slate-400', 'font-medium');
+            });
+            const activeBtn = document.getElementById('nav-' + tabId);
+            if(activeBtn) {
+                activeBtn.classList.remove('text-slate-400', 'font-medium');
+                activeBtn.classList.add('text-indigo-600', 'dark:text-indigo-400', 'font-extrabold', 'scale-105');
+            }
+        }
+
+        // Rendering Data
+        function renderAll() {
+            renderHeader();
+            renderHome();
+            renderHabits();
+            renderExpenses();
+            renderSchoolInfo();
+            renderDDays();
+        }
+
+        function renderHeader() {
+            document.getElementById('headerUserBadge').innerText = state.user.name;
+            document.getElementById('homeGreeting').innerText = `반갑습니다, ${state.user.name}님!`;
+            const today = new Date();
+            if(state.user.birthdate) {
+                const bDate = new Date(state.user.birthdate);
+                if(today.getMonth() === bDate.getMonth() && today.getDate() === bDate.getDate()) {
+                    document.getElementById('birthdayTopBanner').classList.remove('hidden');
+                    document.getElementById('bdayBannerName').innerText = state.user.name;
+                }
+            }
+        }
+
+        function renderHome() {
+            // Water
+            document.getElementById('homeWaterDisplay').innerText = `${state.water.amount} / 2,000 ml`;
+            let wPer = Math.min(100, Math.round((state.water.amount / 2000) * 100));
+            document.getElementById('homeWaterPercent').innerText = `${wPer}%`;
+            document.getElementById('waterFillBg').style.transform = `translateY(${100 - wPer}%)`;
+
+            // Habits Home
+            const todayStr = new Date().toDateString();
+            const comp = state.habits.filter(h => h.lastCompletedDate === todayStr).length;
+            document.getElementById('homeHabitDisplay').innerText = `${comp} / ${state.habits.length} 완료`;
+            let hPer = state.habits.length > 0 ? Math.round((comp / state.habits.length) * 100) : 0;
+            document.getElementById('homeHabitPercent').innerText = `${hPer}%`;
+
+            // Expenses Home (Calculate balance)
+            const mStr = new Date().toISOString().substring(0, 7);
+            const mExps = state.expenses.filter(e => e.date.startsWith(mStr));
+            let balance = 0;
+            mExps.forEach(e => {
+                if(e.type === 'income') balance += Number(e.amount);
+                else balance -= Number(e.amount);
+            });
+            document.getElementById('homeExpenseCount').innerText = `${mExps.length}건 기록`;
+            document.getElementById('homeExpenseTotal').innerText = `₩${balance.toLocaleString()}`;
+        }
+
+        function addWaterIntake() {
+            state.water.amount += 250;
+            saveData(); renderHome(); showToast("수분 250ml 섭취 기록 완료!");
+        }
+
+        // Expenses (Income & Expense)
+        function setExpenseType(type) {
+            document.getElementById('currentExpenseType').value = type;
+            const btnExp = document.getElementById('expTypeExpense');
+            const btnInc = document.getElementById('expTypeIncome');
+            
+            btnExp.className = "flex-1 py-2 text-xs font-extrabold rounded-xl transition-all duration-300 touch-active " + 
+                (type === 'expense' ? "bg-white dark:bg-slate-700 text-rose-500 shadow-sm" : "text-slate-500 dark:text-slate-400");
+            btnInc.className = "flex-1 py-2 text-xs font-extrabold rounded-xl transition-all duration-300 touch-active " + 
+                (type === 'income' ? "bg-white dark:bg-slate-700 text-emerald-500 shadow-sm" : "text-slate-500 dark:text-slate-400");
+        }
+
+        function saveNewExpense() {
+            const t = document.getElementById('expenseTitleInput').value.trim();
+            const a = document.getElementById('expenseAmountInput').value;
+            const type = document.getElementById('currentExpenseType').value;
+            if(!t || !a) return showToast("정보를 모두 입력해주세요.");
+            
+            state.expenses.push({ id: Date.now(), title: t, amount: a, type: type, date: new Date().toISOString() });
+            saveData();
+            document.getElementById('expenseTitleInput').value = '';
+            document.getElementById('expenseAmountInput').value = '';
+            closeModals(); 
+            renderExpenses();
+            showToast("가계부 내역이 추가되었습니다.");
+        }
+
+        function renderExpenses() {
+            const list = document.getElementById('expenseList');
+            list.innerHTML = '';
+            const mStr = new Date().toISOString().substring(0, 7);
+            const mExps = state.expenses.filter(e => e.date.startsWith(mStr)).reverse();
+            
+            let totalIncome = 0;
+            let totalExpense = 0;
+
+            if(mExps.length === 0) {
+                list.innerHTML = '<div class="text-center py-4 text-xs text-slate-400 font-bold bg-slate-50 dark:bg-slate-800 rounded-2xl">이번 달 내역이 없습니다.</div>';
+            } else {
+                mExps.forEach((e) => {
+                    const isIncome = e.type === 'income';
+                    if(isIncome) totalIncome += Number(e.amount);
+                    else totalExpense += Number(e.amount);
+
+                    const idx = state.expenses.findIndex(x => x.id === e.id);
+                    const colorCls = isIncome ? 'text-emerald-500 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400';
+                    const sign = isIncome ? '+' : '-';
+                    
+                    list.innerHTML += `
+                        <div class="flex items-center justify-between p-3 bg-white dark:bg-slate-800/80 rounded-2xl border border-slate-100 dark:border-slate-700">
+                            <div>
+                                <h4 class="text-xs font-bold text-slate-700 dark:text-slate-300">${e.title}</h4>
+                                <span class="text-[10px] text-slate-400">${e.date.split('T')[0]}</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-sm font-extrabold ${colorCls}">${sign}₩${Number(e.amount).toLocaleString()}</span>
+                                <button onclick="deleteExpense(${idx})" class="text-slate-300 hover:text-rose-500 transition"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                        </div>`;
+                });
+            }
+            
+            const balance = totalIncome - totalExpense;
+            document.getElementById('monthBalanceAmount').innerText = `₩${balance.toLocaleString()}`;
+            document.getElementById('monthIncomeAmount').innerText = `₩${totalIncome.toLocaleString()}`;
+            document.getElementById('monthExpenseAmount').innerText = `₩${totalExpense.toLocaleString()}`;
+            renderHome();
+        }
+        function deleteExpense(idx) { state.expenses.splice(idx, 1); saveData(); renderExpenses(); }
+
+        // Habits
+        function renderHabits() {
+            const list = document.getElementById('habitList');
+            list.innerHTML = '';
+            const todayStr = new Date().toDateString();
+            if(state.habits.length === 0) {
+                list.innerHTML = '<div class="text-center py-4 text-xs text-slate-400 font-bold bg-slate-50 dark:bg-slate-800 rounded-2xl">등록된 습관이 없습니다.</div>';
+                return;
+            }
+            state.habits.forEach((h, idx) => {
+                const isDone = h.lastCompletedDate === todayStr;
+                const div = document.createElement('div');
+                div.className = `flex items-center justify-between p-3.5 rounded-2xl border transition-all duration-300 touch-active cursor-pointer ${isDone ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`;
+                div.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] ${isDone ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-transparent'}"><i class="fa-solid fa-check"></i></div>
+                        <span class="text-xs font-bold ${isDone ? 'line-through text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-300'}">${h.title}</span>
+                    </div>
+                    <button onclick="deleteHabit(event, ${idx})" class="text-slate-300 hover:text-rose-500 transition px-2"><i class="fa-solid fa-trash"></i></button>
+                `;
+                div.onclick = (e) => { if(e.target.tagName !== 'BUTTON' && e.target.tagName !== 'I') toggleHabit(idx); };
+                list.appendChild(div);
+            });
+            renderHome();
+        }
+        function toggleHabit(idx) {
+            const todayStr = new Date().toDateString();
+            if(state.habits[idx].lastCompletedDate === todayStr) state.habits[idx].lastCompletedDate = '';
+            else state.habits[idx].lastCompletedDate = todayStr;
+            saveData(); renderHabits();
+        }
+        function deleteHabit(e, idx) { e.stopPropagation(); state.habits.splice(idx, 1); saveData(); renderHabits(); }
+
+        // MAP & GPS LOGGING
+        let map = null;
+        let userMarker = null;
+        let pathLine = null;
+        let gpsPath = [];
+        let totalDistanceKm = 0;
+        let gpsWatchId = null;
+        let currentThemeTiles = null;
+        let activeRouteLogId = null;
+
+        function initMap() {
+            if (map !== null) return;
+            map = L.map('mapContainer', { zoomControl: false, attributionControl: false }).setView([37.5665, 126.9780], 16);
+            updateMapTheme();
+            const customIcon = L.divIcon({
+                className: 'custom-map-marker',
+                html: `<div class="relative w-6 h-6"><div class="absolute inset-0 bg-blue-500 rounded-full animate-ping opacity-75"></div><div class="absolute inset-[3px] bg-blue-600 border-2 border-white rounded-full shadow-lg z-10"></div></div>`,
+                iconSize: [24, 24], iconAnchor: [12, 12]
+            });
+            userMarker = L.marker([37.5665, 126.9780], {icon: customIcon}).addTo(map);
+            pathLine = L.polyline([], { color: '#4f46e5', weight: 5, opacity: 0.8, lineJoin: 'round' }).addTo(map);
+        }
+
+        function updateMapTheme() {
+            if(!map) return;
+            const isDark = document.documentElement.classList.contains('dark');
+            const tileUrl = isDark 
+                ? 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}' 
+                : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+            if(currentThemeTiles) map.removeLayer(currentThemeTiles);
+            currentThemeTiles = L.tileLayer(tileUrl, { 
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap & Esri'
+            }).addTo(map);
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const p = 0.017453292519943295;
+            const c = Math.cos;
+            const a = 0.5 - c((lat2 - lat1) * p)/2 + c(lat1 * p) * c(lat2 * p) * (1 - c((lon2 - lon1) * p))/2;
+            return 12742 * Math.asin(Math.sqrt(a));
+        }
+
+        function toggleMapGps() {
+            const btn = document.getElementById('mapGpsToggleBtn');
+            const statusText = document.getElementById('mapStatusText');
+            
+            if (gpsWatchId) {
+                // Stop Tracking
+                navigator.geolocation.clearWatch(gpsWatchId);
+                gpsWatchId = null;
+                btn.innerHTML = `<i class="fa-solid fa-play"></i> 경로 기록 시작`;
+                btn.className = "flex-1 bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-3.5 rounded-2xl shadow-lg shadow-blue-500/25 touch-active transition duration-300 flex items-center justify-center gap-2 text-xs";
+                statusText.innerText = "추적 중지됨";
+                statusText.classList.replace('text-blue-500', 'text-slate-400');
+                document.getElementById('mapSpeedDisplay').innerText = "0.0";
+                
+                // Prompt Save Route
+                if (gpsPath.length > 1 && totalDistanceKm > 0) {
+                    const routeName = prompt("이동한 경로를 저장하시겠습니까?\n경로 이름을 입력해주세요.", `주행 기록 (${new Date().toLocaleDateString()})`);
+                    if(routeName) {
+                        state.routes.push({
+                            id: Date.now(),
+                            date: new Date().toISOString(),
+                            name: routeName,
+                            distance: totalDistanceKm.toFixed(2),
+                            path: gpsPath
+                        });
+                        saveData();
+                        showToast("경로가 저장되었습니다.");
+                    }
+                }
+            } else {
+                // Start Tracking
+                if (!("geolocation" in navigator)) return showToast("기기에서 GPS를 지원하지 않습니다.");
+                
+                btn.innerHTML = `<i class="fa-solid fa-stop"></i> 기록 중지 및 저장`;
+                btn.className = "flex-1 bg-rose-500 hover:bg-rose-600 text-white font-extrabold py-3.5 rounded-2xl shadow-lg shadow-rose-500/25 touch-active transition duration-300 flex items-center justify-center gap-2 text-xs";
+                statusText.innerText = "위성 신호 탐색 중...";
+                
+                gpsPath = [];
+                totalDistanceKm = 0;
+                pathLine.setLatLngs([]);
+                document.getElementById('mapDistanceDisplay').innerText = "0.00";
+                
+                gpsWatchId = navigator.geolocation.watchPosition((pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    const speed = pos.coords.speed;
+                    
+                    const speedKmh = speed && speed > 0 ? (speed * 3.6).toFixed(1) : "0.0";
+                    document.getElementById('mapSpeedDisplay').innerText = speedKmh;
+                    
+                    const newLatLng = [lat, lng];
+                    if (gpsPath.length > 0) {
+                        const prev = gpsPath[gpsPath.length - 1];
+                        totalDistanceKm += calculateDistance(prev[0], prev[1], lat, lng);
+                        document.getElementById('mapDistanceDisplay').innerText = totalDistanceKm.toFixed(2);
+                    }
+                    
+                    gpsPath.push(newLatLng);
+                    pathLine.setLatLngs(gpsPath);
+                    userMarker.setLatLng(newLatLng);
+                    map.panTo(newLatLng);
+                    
+                    statusText.innerText = "고정밀 실시간 추적 중";
+                    statusText.classList.remove('text-slate-400');
+                    statusText.classList.add('text-blue-500');
+                }, (err) => {
+                    statusText.innerText = "GPS 신호를 찾을 수 없습니다.";
+                    statusText.classList.replace('text-blue-500', 'text-rose-500');
+                }, { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 });
+            }
+        }
+
+        function recenterMap() {
+            if(gpsPath.length > 0) {
+                map.setView(gpsPath[gpsPath.length - 1], 17);
+            } else {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    map.setView([pos.coords.latitude, pos.coords.longitude], 17);
+                    userMarker.setLatLng([pos.coords.latitude, pos.coords.longitude]);
+                }, () => showToast("위치를 확인할 수 없습니다."), { enableHighAccuracy: true });
+            }
+        }
+
+        function openSavedRoutesModal() {
+            const list = document.getElementById('savedRoutesList');
+            list.innerHTML = '';
+            if(state.routes.length === 0) {
+                list.innerHTML = '<div class="text-center py-6 text-xs text-slate-400 font-bold">저장된 주행/이동 기록이 없습니다.</div>';
+            } else {
+                [...state.routes].reverse().forEach((r, idx) => {
+                    const realIdx = state.routes.findIndex(x => x.id === r.id);
+                    list.innerHTML += `
+                        <div class="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700">
+                            <div class="flex-1 cursor-pointer touch-active" onclick="viewRouteOnMap(${realIdx})">
+                                <span class="text-xs font-bold block text-slate-800 dark:text-slate-100">${r.name}</span>
+                                <span class="text-[10px] text-slate-400">${r.date.split('T')[0]} | ${r.distance} km</span>
+                            </div>
+                            <button onclick="deleteRoute(${realIdx})" class="text-slate-300 hover:text-rose-500 p-2"><i class="fa-solid fa-trash text-xs"></i></button>
+                        </div>`;
+                });
+            }
+            document.getElementById('savedRoutesModal').classList.remove('hidden');
+        }
+
+        function viewRouteOnMap(idx) {
+            closeModals();
+            const r = state.routes[idx];
+            if(r.path && r.path.length > 0) {
+                if(gpsWatchId) toggleMapGps(); // Stop active tracking if running
+                pathLine.setLatLngs(r.path);
+                map.fitBounds(pathLine.getBounds());
+                document.getElementById('mapStatusText').innerText = `저장된 기록 보기: ${r.name}`;
+                document.getElementById('mapDistanceDisplay').innerText = r.distance;
+                showToast("저장된 경로를 지도에 표시합니다.");
+            }
+        }
+        function deleteRoute(idx) { state.routes.splice(idx, 1); saveData(); openSavedRoutesModal(); }
+
+        async function scanMaliciousUrl() {
+            const urlInput = document.getElementById('urlInput').value.trim();
+            const res = document.getElementById('urlScanResult');
+            const logBox = document.getElementById('urlLogBox');
+            const verdict = document.getElementById('urlFinalVerdict');
+            const btn = document.getElementById('urlScanBtn');
+
+            let targetUrl = urlInput;
+            if (!targetUrl) return showToast("URL을 입력해주세요.");
+            if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+                targetUrl = 'https://' + targetUrl;
+            }
+
+            btn.disabled = true; btn.innerText = "분석중";
+            res.classList.remove('hidden');
+            verdict.classList.add('hidden');
+            logBox.innerHTML = '';
+
+            const appendLog = (msg) => {
+                const span = document.createElement('div');
+                span.innerText = `> ${msg}`;
+                logBox.appendChild(span);
+                logBox.scrollTop = logBox.scrollHeight;
+            };
+
+            appendLog("실시간 보안 분석 엔진 가동...");
+            appendLog(`검사 URL: ${targetUrl}`);
+
+            let urlObj;
+            try {
+                urlObj = new URL(targetUrl);
+            } catch (e) {
+                appendLog("[오류] 올바르지 않은 URL 형식입니다.");
+                btn.disabled = false; btn.innerText = "분석";
+                return;
+            }
+
+            let threatScore = 0;
+            let isBlacklisted = false;
+            let isEicarTest = false;
+
+            // 0. EICAR Test Domain Check
+            if (urlObj.hostname.toLowerCase().includes('eicar.org')) {
+                isEicarTest = true;
+                appendLog("0. 특수 목적 도메인 검사 중...");
+                appendLog("[알림] EICAR 표준 보안 테스트 도메인이 감지되었습니다. (백신 테스트용)");
+            }
+
+            // 1. SSL Protocol Check
+            appendLog("1. 통신 보안 프로토콜 (SSL/TLS) 검사 중...");
+            if (urlObj.protocol === 'http:') {
+                threatScore += 35;
+                appendLog("[경고] HTTP 미암호화 연결 (데이터 탈취 위험 +35점)");
+            } else {
+                appendLog("[완료] HTTPS 암호화 연결 확인");
+            }
+
+            // 포트(Port) 검사 로직 추가
+            if (urlObj.port) {
+                if (urlObj.port !== '80' && urlObj.port !== '443') {
+                    threatScore += 15;
+                    appendLog(`[주의] 비표준 포트(:${urlObj.port}) 사용 감지 (+15점)`);
+                } else {
+                    appendLog(`[정보] 표준 포트(:${urlObj.port})가 명시적으로 포함됨`);
+                }
+            }
+
+            // 2. Real Cloudflare DNS-over-HTTPS Lookup
+            appendLog(`2. Cloudflare DoH로 실시간 DNS [A] 레코드 조회 중... (${urlObj.hostname})`);
+            try {
+                const dnsResp = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(urlObj.hostname)}&type=A`, {
+                    headers: { 'Accept': 'application/dns-json' }
+                });
+                const dnsData = await dnsResp.json();
+                
+                if (dnsData.Status === 0 && dnsData.Answer && dnsData.Answer.length > 0) {
+                    const ips = dnsData.Answer.filter(a => a.type === 1).map(a => a.data);
+                    appendLog(`[성공] 실시간 IP 도출: ${ips.join(', ')}`);
+                } else if (dnsData.Status === 3) {
+                    threatScore += 40;
+                    appendLog("[경고] 존재하지 않는 도메인 (NXDOMAIN) - 피싱/위조 가능성 높음 (+40점)");
+                } else {
+                    appendLog("[정보] DNS 응답 수신 완료");
+                }
+            } catch (err) {
+                appendLog("[주의] DNS 네트워크 연동 실패 - 도메인 구조로만 판독합니다.");
+            }
+
+            // 3. Check Real Abuse.ch URLhaus Blacklist Database
+            appendLog("3. abuse.ch URLhaus 글로벌 악성 DB 실시간 검증 중...");
+            try {
+                const formData = new URLSearchParams();
+                formData.append('url', targetUrl);
+                
+                const urlhausResp = await fetch('https://urlhaus-api.abuse.ch/v1/url/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData
+                });
+                const urlhausData = await urlhausResp.json();
+
+                if (urlhausData.query_status === 'ok') {
+                    isBlacklisted = true;
+                    threatScore += 100;
+                    appendLog(`[위험!] URLhaus 악성 DB 등재 확인! (위협유형: ${urlhausData.threat || 'Malware/Phishing'}, 상태: ${urlhausData.url_status})`);
+                } else {
+                    appendLog("[클린] URLhaus 글로벌 악성 DB 내 차단 기록 없음");
+                }
+            } catch (e) {
+                appendLog("[안내] 네트워크 요청 실패 (CORS 또는 HTTP 차단).");
+                appendLog("※ 설정 > 'APK 개발자 가이드'를 참고하여 WebView CORS 또는 Manifest Cleartext 설정을 확인해주세요.");
+            }
+
+            // 4. Structural & Punycode Phishing Analysis
+            appendLog("4. 퓨니코드 및 도메인 구조 정밀 분석...");
+            let step4IssueFound = false;
+
+            if (urlObj.hostname.includes('xn--')) {
+                threatScore += 50;
+                appendLog("[위험] 퓨니코드(Punycode) 감지 - 유사문자 피싱(Homograph Attack) 의심 (+50점)");
+                step4IssueFound = true;
+            }
+
+            const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+            if (ipRegex.test(urlObj.hostname)) {
+                threatScore += 60;
+                appendLog("[위험] 도메인 대신 IP 주소로 직접 접속 유도 (+60점)");
+                step4IssueFound = true;
+            }
+
+            const subdomains = urlObj.hostname.split('.');
+            if (subdomains.length > 3) {
+                threatScore += 25;
+                appendLog(`[주의] 서브도메인 깊이가 큼 (${subdomains.length}단계) - 사칭 도메인 주의 (+25점)`);
+                step4IssueFound = true;
+            }
+
+            if (!step4IssueFound) {
+                appendLog("[통과] 도메인 구조 및 패턴 정상 확인 완료");
+            }
+
+            // 5. Final Decision
+            appendLog("분석 종료. 실시간 보안 평가 결과 생성 중...");
+            await new Promise(r => setTimeout(r, 200));
+
+            verdict.classList.remove('hidden', 'bg-emerald-100', 'text-emerald-600', 'bg-amber-100', 'text-amber-600', 'bg-rose-100', 'text-rose-600', 'bg-indigo-100', 'text-indigo-600', 'dark:bg-emerald-900/40', 'dark:text-emerald-400', 'dark:bg-amber-900/40', 'dark:text-amber-400', 'dark:bg-rose-900/40', 'dark:text-rose-400', 'dark:bg-indigo-900/40', 'dark:text-indigo-400');
+
+            if (isEicarTest) {
+                verdict.classList.add('bg-indigo-100', 'dark:bg-indigo-900/40', 'text-indigo-600', 'dark:text-indigo-400');
+                verdict.innerHTML = `<i class="fa-solid fa-vial-virus text-lg mr-1"></i> <b>보안 테스트용 URL (EICAR)</b><br><span class="text-[10px] opacity-90">보안 솔루션 테스트를 위한 표준 도메인입니다. 실제 위협은 아닙니다.</span>`;
+            } else if (isBlacklisted || threatScore >= 50) {
+                verdict.classList.add('bg-rose-100', 'dark:bg-rose-900/40', 'text-rose-600', 'dark:text-rose-400');
+                verdict.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-lg mr-1"></i> <b>위험한 URL (위험 지수: ${threatScore})</b><br><span class="text-[10px] opacity-90">${isBlacklisted ? '글로벌 악성 DB에 등재된 사이트입니다!' : '스미싱 또는 피싱 위험 요소가 다수 감지되었습니다.'}</span>`;
+            } else if (threatScore > 0) {
+                verdict.classList.add('bg-amber-100', 'dark:bg-amber-900/40', 'text-amber-600', 'dark:text-amber-400');
+                verdict.innerHTML = `<i class="fa-solid fa-circle-exclamation text-lg mr-1"></i> <b>주의 필요 (위험 지수: ${threatScore})</b><br><span class="text-[10px] opacity-90">접속 시 개인정보 입력 및 파일 다운로드에 주의하세요.</span>`;
+            } else {
+                verdict.classList.add('bg-emerald-100', 'dark:bg-emerald-900/40', 'text-emerald-600', 'dark:text-emerald-400');
+                verdict.innerHTML = `<i class="fa-solid fa-shield-check text-lg mr-1"></i> <b>안전함 (위험 지수: 0)</b><br><span class="text-[10px] opacity-90">실시간 DNS 및 DB 검사 결과 특이 위협이 발견되지 않았습니다.</span>`;
+            }
+
+            btn.disabled = false; btn.innerText = "분석";
+        }
+
+        // Other Tools (D-Day, Stopwatch, Password)
+        function renderDDays() {
+            const list = document.getElementById('ddayListContainer');
+            list.innerHTML = '';
+            if(state.ddays.length === 0) { list.innerHTML = '<div class="text-center py-2 text-xs text-slate-400 font-bold">등록된 D-Day가 없습니다.</div>'; return; }
+            const today = new Date(); today.setHours(0,0,0,0);
+            state.ddays.forEach((d, idx) => {
+                const target = new Date(d.date);
+                const diffTime = target - today;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                let dStr = diffDays > 0 ? `D-${diffDays}` : diffDays === 0 ? `D-Day` : `D+${Math.abs(diffDays)}`;
+                let colorClass = diffDays >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400';
+                list.innerHTML += `<div class="flex items-center justify-between bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-700"><div><span class="text-xs font-bold block">${d.title}</span><span class="text-[10px] text-slate-400">${d.date}</span></div><div class="flex items-center gap-3"><span class="text-sm font-black ${colorClass}">${dStr}</span><button onclick="deleteDDay(${idx})" class="text-slate-300 hover:text-rose-500"><i class="fa-solid fa-trash text-xs"></i></button></div></div>`;
+            });
+        }
+        function deleteDDay(idx) { state.ddays.splice(idx, 1); saveData(); renderDDays(); }
+
+        let swTimer = null; let swTime = 0;
+        function startStopwatch() { if(!swTimer) swTimer = setInterval(() => { swTime += 10; document.getElementById('stopwatchDisplay').innerText = `${Math.floor(swTime / 60000).toString().padStart(2,'0')}:${Math.floor((swTime / 1000) % 60).toString().padStart(2,'0')}.${Math.floor((swTime % 1000)/10).toString().padStart(2,'0')}`; }, 10); }
+        function pauseStopwatch() { clearInterval(swTimer); swTimer = null; }
+        function resetStopwatch() { pauseStopwatch(); swTime = 0; document.getElementById('stopwatchDisplay').innerText = "00:00.00"; }
+        function generateNewPassword() {
+            const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+            let pwd = ""; for(let i=0; i<12; i++) pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+            document.getElementById('passGenOutput').value = pwd;
+        }
+        function copyGeneratedPassword() {
+            const el = document.getElementById('passGenOutput'); el.select(); document.execCommand('copy'); showToast("암호가 복사되었습니다.");
+        }
+
+        // Modals Settings & Profile
+        function openProfileModal() {
+            document.getElementById('settingName').value = state.user.name;
+            document.getElementById('settingBirthdate').value = state.user.birthdate;
+            document.getElementById('profileModal').classList.remove('hidden');
+        }
+        function closeModals() { document.querySelectorAll('.fixed.inset-0').forEach(el => el.classList.add('hidden')); }
+        function openDevGuideModal() { document.getElementById('devGuideModal').classList.remove('hidden'); }
+        function closeDevGuideModal() { document.getElementById('devGuideModal').classList.add('hidden'); }
+        function openAddDDayModal() { document.getElementById('addDDayModal').classList.remove('hidden'); }
+        function openAddHabitModal() { document.getElementById('addHabitModal').classList.remove('hidden'); }
+        function openAddExpenseModal() { document.getElementById('addExpenseModal').classList.remove('hidden'); setExpenseType('expense'); }
+        
+        function saveOnboardingProfile() {
+            const n = document.getElementById('onboardName').value.trim();
+            const b = document.getElementById('onboardBirthdate').value;
+            if(!n) return showToast("이름을 입력해주세요.");
+            state.user.name = n; state.user.birthdate = b;
+            saveData(); document.getElementById('onboardingModal').classList.add('hidden');
+            initApp(); showToast("환영합니다!");
+        }
+
+        function saveProfileSettings() {
+            state.user.name = document.getElementById('settingName').value.trim();
+            state.user.birthdate = document.getElementById('settingBirthdate').value;
+            saveData(); closeModals(); renderHeader(); showToast("설정이 저장되었습니다.");
+        }
+        
+        function requestLocationPerm() {
+            if (window.Android && window.Android.requestLocationPermission) {
+                window.Android.requestLocationPermission();
+                showToast("안드로이드 시스템에 GPS 위치 권한을 요청했습니다.");
+            } else if ('geolocation' in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    () => showToast("정밀 위치 권한이 허용되었습니다."),
+                    () => showToast("위치 권한이 거부되었습니다.")
+                );
+            }
+        }
+
+        function resetData() {
+            localStorage.removeItem(DB_KEY);
+            if(window.Android && window.Android.saveData) window.Android.saveData("");
+            location.reload();
+        }
+
+        // School Mocks
+        function switchSchoolSubTab(tab) {
+            document.getElementById('schoolSubViewTimetable').classList.toggle('hidden', tab !== 'timetable');
+            document.getElementById('schoolSubViewMeals').classList.toggle('hidden', tab !== 'meals');
+            document.getElementById('btnSubTabTimetable').className = `flex-1 py-2 text-xs font-extrabold rounded-xl transition-all duration-300 shadow-sm ${tab==='timetable'?'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300':'text-slate-600 dark:text-slate-400'}`;
+            document.getElementById('btnSubTabMeals').className = `flex-1 py-2 text-xs font-extrabold rounded-xl transition-all duration-300 ${tab==='meals'?'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm':'text-slate-600 dark:text-slate-400'}`;
+        }
+        function openSchoolSearchModal() { document.getElementById('schoolSearchModal').classList.remove('hidden'); }
+        function searchSchoolNEIS() {
+            const v = document.getElementById('schoolSearchInput').value.trim();
+            if(!v) return;
+            document.getElementById('schoolSearchResultList').innerHTML = `<div onclick="selectSchool('${v}')" class="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 cursor-pointer touch-active"><span class="font-bold text-xs">${v}</span></div>`;
+        }
+        function selectSchool(name) { selectedSchoolObj = { name }; document.getElementById('schoolGradeClassArea').classList.remove('hidden'); document.getElementById('btnConfirmSchool').classList.remove('opacity-50', 'pointer-events-none'); }
+        function confirmSchoolSelection() {
+            if(!selectedSchoolObj) return;
+            state.school = { name: selectedSchoolObj.name, grade: document.getElementById('schoolGradeSelect').value, classNum: document.getElementById('schoolClassSelect').value };
+            saveData(); closeModals(); renderSchoolInfo(); showToast("학교가 연동되었습니다.");
+        }
+        function renderSchoolInfo() {
+            if(state.school) {
+                document.getElementById('schoolCardTitle').innerText = state.school.name;
+                document.getElementById('schoolCardSub').innerText = `${state.school.grade}학년 ${state.school.classNum}반 연동됨`;
+                document.getElementById('timetableListContainer').innerHTML = `<div class="flex items-center justify-between bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-700"><span class="text-[10px] font-bold text-slate-400">1교시</span><span class="text-xs font-black">국어</span></div>`;
+                document.getElementById('mealListContainer').innerHTML = `<div class="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 text-center"><span class="text-[10px] font-bold text-slate-400 mb-2 block">오늘의 점심</span><p class="text-xs font-bold leading-relaxed">현미밥<br>순두부찌개<br>돈육불고기</p></div>`;
+            }
+        }
+    </script>
+</body>
+</html>
