@@ -1,15 +1,21 @@
 # LifeKit
 
-업데이트 예정:
+Toss-style Korean life utility app.
 
-기존 길찾기 기능을 삭제하고 다른기능, 다른 디자인으로 찾아뵙겠습니다.
+## Included
+- Toss-inspired mobile UI
+- NEIS school search, timetable and meal data
+- GPS speed, altitude and distance tracking
+- Altitude-based route segment colors
+- Local route saving
+- Daily habits
+- Monthly income/expense ledger
+- D-Day and stopwatch
+- Dark mode
+- PWA manifest and service worker
+- LifeKit app icon
 
-
-
-
-
-개인정보 처리방침:
-
-1. LifeKit은 대한민국에서만 테스트를 진행하였습니다.
-2. LifeKit의 데이터는 사용자의 기기에서만 처리/사용됩니다.
-3. LifeKit은 철저히 악성코드 없는 안전한 앱입니다.
+## Notes
+- NEIS features require a valid NEIS Open API key. The key is stored locally in the browser.
+- GPS requires HTTPS (or a supported secure context) and location permission.
+- App data is stored locally in the browser.
