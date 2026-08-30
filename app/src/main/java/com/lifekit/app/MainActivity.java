@@ -1,186 +1,102 @@
 package com.lifekit.app;
 
 import android.Manifest;
-import android.app.Activity;
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
+import android.app.*;
+import android.content.*;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
-import android.os.Build;
-import android.os.Bundle;
-import android.os.VibrationEffect;
-import android.os.Vibrator;
-import android.os.VibratorManager;
-import android.webkit.GeolocationPermissions;
-import android.webkit.PermissionRequest;
-import android.webkit.WebChromeClient;
-import android.webkit.WebResourceError;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import android.widget.Toast;
+import android.graphics.drawable.GradientDrawable;
+import android.location.*;
+import android.os.*;
+import android.text.InputType;
+import android.view.*;
+import android.widget.*;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.osmdroid.config.Configuration;
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
+import org.osmdroid.util.GeoPoint;
+import org.osmdroid.views.MapView;
+import org.osmdroid.views.overlay.Marker;
+import org.osmdroid.views.overlay.Polyline;
+import java.io.*;
+import java.net.*;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    private static final int LOCATION_REQ = 1001;
-    private static final int NOTIFICATION_REQ = 1002;
-    private static final String CHANNEL_ID = "lifekit_general";
-    private static final String APP_URL = "https://hiakdhs323-cmd.github.io/LifeKit/";
+    private static final int REQ_PERMS=1001;
+    private static final String CHANNEL_ID="lifekit_general";
+    private final ExecutorService executor=Executors.newFixedThreadPool(2);
+    private final Handler mainHandler=new Handler(Looper.getMainLooper());
+    private LinearLayout root,content,navBar;
+    private MapView mapView;
+    private Marker marker;
+    private Polyline routeLine;
+    private LocationManager locationManager;
+    private boolean tracking=false;
+    private Location lastLocation;
+    private double totalKm=0;
+    private final ArrayList<GeoPoint> routePoints=new ArrayList<>();
+    private TextView speedText,distanceText,altitudeText,gpsStatus;
+    private SharedPreferences prefs;
 
-    private WebView webView;
-    private GeolocationPermissions.Callback pendingGeoCallback;
-    private String pendingGeoOrigin;
+    @Override protected void onCreate(Bundle b){super.onCreate(b);prefs=getSharedPreferences("lifekit",MODE_PRIVATE);createNotificationChannel();Configuration.getInstance().setUserAgentValue(getPackageName());locationManager=(LocationManager)getSystemService(LOCATION_SERVICE);buildShell();requestNeededPermissions();showTab(0);}
+    private int dp(float v){return(int)(v*getResources().getDisplayMetrics().density+.5f);}
+    private GradientDrawable bg(int c,float r){GradientDrawable g=new GradientDrawable();g.setColor(c);g.setCornerRadius(dp(r));return g;}
+    private TextView tv(String s,float z,int c,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);t.setGravity(Gravity.CENTER_VERTICAL);if(bold)t.setTypeface(null,1);return t;}
+    private Button btn(String s){Button b=new Button(this);b.setText(s);b.setTextSize(13);b.setAllCaps(false);b.setTextColor(Color.WHITE);b.setBackground(bg(Color.rgb(49,130,246),15));b.setPadding(dp(14),0,dp(14),0);return b;}
+    private LinearLayout row(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.HORIZONTAL);l.setGravity(Gravity.CENTER_VERTICAL);return l;}
+    private LinearLayout card(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(dp(16),dp(16),dp(16),dp(16));l.setBackground(bg(Color.WHITE,20));return l;}
+    private void addGap(int h){Space s=new Space(this);content.addView(s,new LinearLayout.LayoutParams(1,dp(h)));}
 
-    @Override public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        createNotificationChannel();
-
-        webView = new WebView(this);
-        setContentView(webView);
-
-        WebSettings s = webView.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setGeolocationEnabled(true);
-        s.setAllowFileAccess(false);
-        s.setAllowContentAccess(false);
-        s.setMediaPlaybackRequiresUserGesture(false);
-        s.setBuiltInZoomControls(false);
-        s.setDisplayZoomControls(false);
-        s.setSupportZoom(false);
-        s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-
-        webView.setWebViewClient(new WebViewClient() {
-            @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                super.onReceivedError(view, request, error);
-                if (request.isForMainFrame()) {
-                    Toast.makeText(MainActivity.this, "LifeKit 연결에 문제가 있어요. 잠시 후 다시 시도해 주세요.", Toast.LENGTH_LONG).show();
-                }
-            }
-        });
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                if (hasLocation()) {
-                    callback.invoke(origin, true, false);
-                    return;
-                }
-                pendingGeoOrigin = origin;
-                pendingGeoCallback = callback;
-                requestLocationPermission();
-            }
-            @Override public void onPermissionRequest(PermissionRequest request) { request.deny(); }
-        });
-
-        if (hasLocation()) requestNotificationPermission();
-        else requestLocationPermission();
-
-        webView.loadUrl(APP_URL);
+    private void buildShell(){
+        root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Color.rgb(242,244,246));setContentView(root);
+        LinearLayout header=new LinearLayout(this);header.setPadding(dp(18),dp(12),dp(14),dp(10));header.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView icon=new ImageView(this);icon.setImageResource(R.drawable.lifekit_icon);icon.setScaleType(ImageView.ScaleType.CENTER_CROP);header.addView(icon,new LinearLayout.LayoutParams(dp(42),dp(42)));
+        LinearLayout ht=new LinearLayout(this);ht.setOrientation(LinearLayout.VERTICAL);ht.setPadding(dp(10),0,0,0);ht.addView(tv("LifeKit",20,Color.rgb(25,31,40),true));ht.addView(tv("일상을 한 곳에서",12,Color.rgb(139,149,161),false));header.addView(ht,new LinearLayout.LayoutParams(0,-2,1));
+        Button settings=btn("⚙");settings.setTextColor(Color.rgb(78,89,104));settings.setBackground(bg(Color.rgb(243,245,247),15));settings.setOnClickListener(v->showSettings());header.addView(settings,new LinearLayout.LayoutParams(dp(44),dp(44)));root.addView(header,new LinearLayout.LayoutParams(-1,dp(68)));
+        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(16),dp(16),dp(16),dp(18));scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        navBar=new LinearLayout(this);navBar.setPadding(dp(6),dp(6),dp(6),dp(8));navBar.setBackgroundColor(Color.WHITE);String[] labels={"⌂\n홈","▣\n학교","⌖\n내비","✓\n습관","₩\n가계부"};for(int i=0;i<labels.length;i++){final int idx=i;TextView n=tv(labels[i],11,Color.rgb(152,161,173),true);n.setGravity(Gravity.CENTER);n.setPadding(0,dp(6),0,0);n.setOnClickListener(v->showTab(idx));navBar.addView(n,new LinearLayout.LayoutParams(0,dp(66),1));}root.addView(navBar,new LinearLayout.LayoutParams(-1,dp(78)));
     }
+    private void showTab(int tab){content.removeAllViews();if(mapView!=null){mapView.onPause();mapView=null;}switch(tab){case 0:home();break;case 1:school();break;case 2:map();break;case 3:habits();break;default:money();}}
 
-    private boolean hasLocation() {
-        return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-    }
+    private void home(){String name=prefs.getString("name","");LinearLayout hero=card();hero.setBackground(bg(Color.rgb(49,130,246),24));hero.addView(tv(name.isEmpty()?"오늘도 잘 지내고 있나요?":name+"님, 오늘도 잘 지내고 있나요?",24,Color.WHITE,true));TextView p=tv("학교부터 이동, 습관, 가계부까지 한 곳에서.",13,Color.rgb(234,243,255),false);p.setPadding(0,dp(8),0,dp(18));hero.addView(p);LinearLayout r=row();Button school=btn("🏫 학교"),gps=btn("📍 GPS");school.setBackground(bg(0x2BFFFFFF,14));gps.setBackground(bg(0x2BFFFFFF,14));school.setOnClickListener(v->showTab(1));gps.setOnClickListener(v->showTab(2));r.addView(school,new LinearLayout.LayoutParams(0,dp(48),1));r.addView(new Space(this),new LinearLayout.LayoutParams(dp(8),1));r.addView(gps,new LinearLayout.LayoutParams(0,dp(48),1));hero.addView(r);content.addView(hero);addGap(12);
+        LinearLayout stats=row();stats.addView(statCard("오늘 물 섭취",prefs.getInt("water",0)+" / 2,000ml","+ 250ml",v->{prefs.edit().putInt("water",Math.min(5000,prefs.getInt("water",0)+250)).apply();home();}),new LinearLayout.LayoutParams(0,-2,1));stats.addView(new Space(this),new LinearLayout.LayoutParams(dp(10),1));stats.addView(statCard("오늘 루틴",prefs.getInt("habitDone",0)+" / "+prefs.getInt("habitCount",0),"루틴 보기",v->showTab(3)),new LinearLayout.LayoutParams(0,-2,1));content.addView(stats);addGap(10);
+        LinearLayout bal=card();bal.addView(tv("이번 달 잔액",12,Color.rgb(139,149,161),true));bal.addView(tv(formatWon(monthBalance()),22,Color.rgb(25,31,40),true));bal.setOnClickListener(v->showTab(4));content.addView(bal);addGap(16);content.addView(tv("오늘의 한눈에 보기",18,Color.rgb(25,31,40),true));addGap(8);
+        LinearLayout c1=card();c1.addView(tv(prefs.getString("schoolName","학교를 연결해 주세요"),14,Color.rgb(25,31,40),true));c1.addView(tv(prefs.getString("schoolName","").isEmpty()?"실제 시간표·급식을 불러옵니다.":"연결된 학교",12,Color.rgb(139,149,161),false));c1.setOnClickListener(v->showTab(1));content.addView(c1);addGap(8);LinearLayout c2=card();String d=prefs.getString("ddayTitle","");c2.addView(tv("D-Day",14,Color.rgb(25,31,40),true));c2.addView(tv(d.isEmpty()?"등록된 일정이 없습니다.":d+" · "+prefs.getString("ddayDate",""),12,Color.rgb(139,149,161),false));content.addView(c2);}
+    private LinearLayout statCard(String l,String val,String action,View.OnClickListener listener){LinearLayout c=card();c.addView(tv(l,12,Color.rgb(139,149,161),true));c.addView(tv(val,20,Color.rgb(49,130,246),true));Button b=new Button(this);b.setText(action);b.setAllCaps(false);b.setTextSize(12);b.setTextColor(Color.rgb(78,89,104));b.setBackground(bg(Color.rgb(243,245,247),12));b.setOnClickListener(listener);c.addView(b,new LinearLayout.LayoutParams(-1,dp(42)));return c;}
+    private int monthBalance(){return prefs.getInt("income",0)-prefs.getInt("expense",0);}private String formatWon(int n){return "₩"+String.format(Locale.KOREA,"%,d",n);}
 
-    private void requestLocationPermission() {
-        if (!hasLocation()) {
-            requestPermissions(new String[]{
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-            }, LOCATION_REQ);
-        }
-    }
+    private void school(){LinearLayout top=row();LinearLayout texts=new LinearLayout(this);texts.setOrientation(LinearLayout.VERTICAL);texts.addView(tv("학교",19,Color.rgb(25,31,40),true));texts.addView(tv("NEIS 실제 데이터 연동",12,Color.rgb(139,149,161),false));top.addView(texts,new LinearLayout.LayoutParams(0,-2,1));Button set=btn("학교 설정");set.setOnClickListener(v->schoolDialog());top.addView(set,new LinearLayout.LayoutParams(dp(105),dp(44)));content.addView(top);addGap(12);LinearLayout sc=card();sc.addView(tv("연결된 학교",12,Color.rgb(139,149,161),true));sc.addView(tv(prefs.getString("schoolName","없음"),20,Color.rgb(25,31,40),true));sc.addView(tv(prefs.getString("schoolCode","학교를 검색해 연결하세요."),12,Color.rgb(139,149,161),false));content.addView(sc);addGap(12);LinearLayout tabs=row();Button t=btn("시간표"),m=btn("급식");t.setOnClickListener(v->schoolSchedule(false));m.setOnClickListener(v->schoolSchedule(true));tabs.addView(t,new LinearLayout.LayoutParams(0,dp(46),1));tabs.addView(new Space(this),new LinearLayout.LayoutParams(dp(8),1));tabs.addView(m,new LinearLayout.LayoutParams(0,dp(46),1));content.addView(tabs);addGap(10);schoolSchedule(false);}
+    private void schoolSchedule(boolean meal){LinearLayout loading=card();loading.addView(tv(meal?"이번 주 급식":"이번 주 시간표",18,Color.rgb(25,31,40),true));loading.addView(tv("연결된 학교의 NEIS 데이터를 불러옵니다.",12,Color.rgb(139,149,161),false));content.addView(loading);String code=prefs.getString("schoolCode","");if(code.isEmpty())return;String office=prefs.getString("officeCode","");String grade=prefs.getString("grade","1"),cls=prefs.getString("classNum","1");Calendar cal=Calendar.getInstance();int dow=cal.get(Calendar.DAY_OF_WEEK);cal.add(Calendar.DATE,dow==Calendar.SUNDAY?-6:Calendar.MONDAY-dow);String from=new SimpleDateFormat("yyyyMMdd",Locale.KOREA).format(cal.getTime());cal.add(Calendar.DATE,4);String to=new SimpleDateFormat("yyyyMMdd",Locale.KOREA).format(cal.getTime());executor.submit(()->{try{String kind=prefs.getString("schoolKind","");String service=meal?"mealServiceDietInfo":(kind.contains("초등")?"elsTimetable":(kind.contains("중학교")?"misTimetable":"hisTimetable"));String url="https://open.neis.go.kr/hub/"+service+"?KEY="+URLEncoder.encode(prefs.getString("neisKey","sample"),"UTF-8")+"&Type=json&pIndex=1&pSize=1000&ATPT_OFCDC_SC_CODE="+office+"&SD_SCHUL_CODE="+code+(meal?"&MLSV_FROM_YMD="+from+"&MLSV_TO_YMD="+to:"&GRADE="+grade+"&CLASS_NM="+cls+"&TI_FROM_YMD="+from+"&TI_TO_YMD="+to);String json=httpGet(url);mainHandler.post(()->{content.removeView(loading);renderNeis(json,service,meal);});}catch(Exception e){mainHandler.post(()->{content.removeView(loading);content.addView(tv("데이터를 불러오지 못했어요. NEIS 인증키와 네트워크를 확인해 주세요.",13,Color.rgb(139,149,161),false));});}});}
+    private void renderNeis(String json,String service,boolean meal){LinearLayout box=card();try{JSONObject root=new JSONObject(json);JSONArray arr=root.optJSONArray(service);JSONArray rows=arr==null?null:arr.getJSONObject(1).optJSONArray("row");if(rows==null||rows.length()==0)box.addView(tv("표시할 데이터가 없습니다.",13,Color.rgb(139,149,161),false));else for(int i=0;i<rows.length();i++){JSONObject r=rows.getJSONObject(i);String text=meal?r.optString("MLSV_YMD")+" · "+r.optString("DDISH_NM"):r.optString("ALL_TI_YMD")+" · "+r.optString("PERIO")+"교시 · "+r.optString("ITRT_CNTNT",r.optString("SUBJECT","-"));TextView line=tv(text,13,Color.rgb(25,31,40),false);line.setPadding(0,dp(6),0,dp(6));box.addView(line);}}catch(Exception e){box.addView(tv("NEIS 응답을 읽을 수 없습니다.",13,Color.rgb(139,149,161),false));}content.addView(box);}
+    private void schoolDialog(){final EditText q=new EditText(this);q.setHint("학교명");q.setSingleLine(true);AlertDialog d=new AlertDialog.Builder(this).setTitle("학교 검색").setView(q).setPositiveButton("검색",null).setNegativeButton("취소",null).create();d.setOnShowListener(x->d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{String query=q.getText().toString().trim();if(query.isEmpty())return;executor.submit(()->{try{String json=httpGet("https://open.neis.go.kr/hub/schoolInfo?KEY="+URLEncoder.encode(prefs.getString("neisKey","sample"),"UTF-8")+"&Type=json&pIndex=1&pSize=30&SCHUL_NM="+URLEncoder.encode(query,"UTF-8"));mainHandler.post(()->schoolResultsDialog(json));}catch(Exception e){mainHandler.post(()->toast("학교 검색 실패"));}});}));d.show();}
+    private void schoolResultsDialog(String json){try{JSONObject o=new JSONObject(json);JSONArray a=o.optJSONArray("schoolInfo");JSONArray rows=a==null?null:a.getJSONObject(1).optJSONArray("row");if(rows==null||rows.length()==0){toast("검색 결과가 없습니다.");return;}String[] labels=new String[Math.min(rows.length(),20)];for(int i=0;i<labels.length;i++){JSONObject r=rows.getJSONObject(i);labels[i]=r.optString("SCHUL_NM")+" · "+r.optString("SCHUL_KND_SC_NM");}new AlertDialog.Builder(this).setTitle("학교 선택").setItems(labels,(di,which)->{try{JSONObject r=rows.getJSONObject(which);prefs.edit().putString("schoolName",r.optString("SCHUL_NM")).putString("officeCode",r.optString("ATPT_OFCDC_SC_CODE")).putString("schoolCode",r.optString("SD_SCHUL_CODE")).putString("schoolKind",r.optString("SCHUL_KND_SC_NM")).apply();classGradeDialog();}catch(Exception ignored){}}).show();}catch(Exception e){toast("검색 결과 오류");}}
+    private void classGradeDialog(){LinearLayout v=new LinearLayout(this);v.setPadding(dp(20),0,dp(20),0);v.setOrientation(LinearLayout.VERTICAL);EditText g=new EditText(this);g.setHint("학년");g.setInputType(InputType.TYPE_CLASS_NUMBER);g.setText("1");EditText c=new EditText(this);c.setHint("반");c.setInputType(InputType.TYPE_CLASS_NUMBER);c.setText("1");v.addView(g);v.addView(c);new AlertDialog.Builder(this).setTitle("학년 / 반").setView(v).setPositiveButton("연결",(d,w)->{prefs.edit().putString("grade",g.getText().toString()).putString("classNum",c.getText().toString()).apply();school();toast("학교가 연결됐어요.");}).setNegativeButton("취소",null).show();}
 
-    private void requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33
-                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_REQ);
-        }
-    }
+    private void map(){content.setPadding(0,0,0,0);mapView=new MapView(this);mapView.setTileSource(TileSourceFactory.MAPNIK);mapView.setMultiTouchControls(true);mapView.getController().setZoom(15d);mapView.getController().setCenter(new GeoPoint(37.5665,126.978));content.addView(mapView,new LinearLayout.LayoutParams(-1,0,1));LinearLayout panel=card();LinearLayout metrics=row();LinearLayout a=metric("속도","0.0","km/h"),b=metric("고도","—","m"),c=metric("거리","0.00","km");metrics.addView(a,new LinearLayout.LayoutParams(0,-2,1));metrics.addView(b,new LinearLayout.LayoutParams(0,-2,1));metrics.addView(c,new LinearLayout.LayoutParams(0,-2,1));speedText=(TextView)a.getChildAt(1);altitudeText=(TextView)b.getChildAt(1);distanceText=(TextView)c.getChildAt(1);panel.addView(metrics);gpsStatus=tv("위치 대기 중",12,Color.rgb(139,149,161),true);panel.addView(gpsStatus);Button g=btn("● 경로 기록 시작");g.setOnClickListener(v->{if(tracking){stopTracking();g.setText("● 경로 기록 시작");}else{startTracking();g.setText("■ 기록 중지 및 저장");}});panel.addView(g,new LinearLayout.LayoutParams(-1,dp(50)));content.addView(panel,new LinearLayout.LayoutParams(-1,dp(168)));}
+    private LinearLayout metric(String l,String val,String unit){LinearLayout x=new LinearLayout(this);x.setOrientation(LinearLayout.VERTICAL);x.setGravity(Gravity.CENTER);x.addView(tv(l,10,Color.rgb(139,149,161),true));x.addView(tv(val,24,Color.rgb(49,130,246),true));x.addView(tv(unit,10,Color.rgb(139,149,161),false));return x;}
+    private void startTracking(){if(!hasLocation()){requestLocationPermission();return;}tracking=true;routePoints.clear();totalKm=0;lastLocation=null;routeLine=new Polyline();routeLine.setColor(Color.rgb(49,130,246));routeLine.setWidth(9f);mapView.getOverlays().add(routeLine);try{locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,1000,1,locationListener);}catch(SecurityException e){toast("위치 권한이 필요합니다.");}gpsStatus.setText("GPS 신호 찾는 중…");}
+    private final LocationListener locationListener=new LocationListener(){public void onLocationChanged(Location loc){if(!tracking)return;GeoPoint p=new GeoPoint(loc.getLatitude(),loc.getLongitude());if(lastLocation!=null){float[] r=new float[1];Location.distanceBetween(lastLocation.getLatitude(),lastLocation.getLongitude(),loc.getLatitude(),loc.getLongitude(),r);double km=r[0]/1000d;if(km>=0.0005&&km<1)totalKm+=km;}lastLocation=loc;routePoints.add(p);if(marker==null){marker=new Marker(mapView);marker.setTitle("현재 위치");mapView.getOverlays().add(marker);}marker.setPosition(p);routeLine.setPoints(routePoints);mapView.getController().animateTo(p);speedText.setText(String.format(Locale.KOREA,"%.1f",Math.max(0,loc.getSpeed()*3.6)));altitudeText.setText(loc.hasAltitude()?String.valueOf(Math.round(loc.getAltitude())):"—");distanceText.setText(String.format(Locale.KOREA,"%.2f",totalKm));gpsStatus.setText("실시간 GPS 추적 중");mapView.invalidate();}public void onProviderEnabled(String p){}public void onProviderDisabled(String p){}};
+    private void stopTracking(){tracking=false;try{locationManager.removeUpdates(locationListener);}catch(SecurityException ignored){}gpsStatus.setText("추적 중지됨");speedText.setText("0.0");if(routePoints.size()>1&&totalKm>0){EditText n=new EditText(this);n.setHint("경로 이름");new AlertDialog.Builder(this).setTitle("경로 저장").setView(n).setPositiveButton("저장",(d,w)->toast("경로가 저장됐어요.")).setNegativeButton("취소",null).show();}}
 
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= 26) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "LifeKit 알림",
-                    NotificationManager.IMPORTANCE_DEFAULT
-            );
-            channel.setDescription("LifeKit의 생활 알림");
-            channel.enableVibration(true);
-            channel.setVibrationPattern(new long[]{0, 70, 45, 70});
-            channel.setLightColor(Color.rgb(49, 130, 246));
-            getSystemService(NotificationManager.class).createNotificationChannel(channel);
-        }
-    }
+    private void habits(){LinearLayout head=row();head.addView(tv("습관",19,Color.rgb(25,31,40),true),new LinearLayout.LayoutParams(0,-2,1));Button add=btn("+ 추가");add.setOnClickListener(v->addHabitDialog());head.addView(add);content.addView(head);addGap(12);int count=prefs.getInt("habitCount",0);if(count==0){content.addView(tv("아직 만든 습관이 없어요.",13,Color.rgb(139,149,161),false));return;}for(int i=0;i<count;i++){LinearLayout c=card();c.addView(tv("습관 "+(i+1),14,Color.rgb(25,31,40),true));Button done=btn(i<prefs.getInt("habitDone",0)?"✓ 오늘 완료":"오늘 완료");done.setOnClickListener(v->{prefs.edit().putInt("habitDone",Math.min(count,prefs.getInt("habitDone",0)+1)).apply();habits();});c.addView(done,new LinearLayout.LayoutParams(-1,dp(44)));content.addView(c);addGap(8);}}
+    private void addHabitDialog(){EditText e=new EditText(this);e.setHint("예: 책 20분 읽기");new AlertDialog.Builder(this).setTitle("습관 추가").setView(e).setPositiveButton("추가",(d,w)->{prefs.edit().putInt("habitCount",prefs.getInt("habitCount",0)+1).apply();habits();toast("습관을 추가했어요.");}).setNegativeButton("취소",null).show();}
 
-    public void showLifeKitNotification(String title, String text) {
-        if (Build.VERSION.SDK_INT >= 33
-                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
+    private void money(){LinearLayout head=row();head.addView(tv("가계부",19,Color.rgb(25,31,40),true),new LinearLayout.LayoutParams(0,-2,1));Button add=btn("+ 내역");add.setOnClickListener(v->moneyDialog());head.addView(add);content.addView(head);addGap(12);LinearLayout s=card();s.addView(tv("이번 달 잔액",12,Color.rgb(139,149,161),true));s.addView(tv(formatWon(monthBalance()),24,Color.rgb(25,31,40),true));LinearLayout rr=row();rr.setPadding(0,dp(10),0,0);rr.addView(tv("수입  "+formatWon(prefs.getInt("income",0)),13,Color.rgb(32,201,151),true),new LinearLayout.LayoutParams(0,-2,1));rr.addView(tv("지출  "+formatWon(prefs.getInt("expense",0)),13,Color.rgb(240,68,82),true),new LinearLayout.LayoutParams(0,-2,1));s.addView(rr);content.addView(s);addGap(12);content.addView(tv("내역",18,Color.rgb(25,31,40),true));addGap(8);String items=prefs.getString("moneyItems","");if(items.isEmpty())content.addView(tv("이번 달 내역이 없어요.",13,Color.rgb(139,149,161),false));else for(String it:items.split("\\|",-1))if(!it.isEmpty()){LinearLayout c=card();c.addView(tv(it,13,Color.rgb(25,31,40),true));content.addView(c);addGap(8);}}
+    private void moneyDialog(){LinearLayout v=new LinearLayout(this);v.setOrientation(LinearLayout.VERTICAL);v.setPadding(dp(18),0,dp(18),0);EditText t=new EditText(this);t.setHint("내용");EditText a=new EditText(this);a.setHint("금액");a.setInputType(InputType.TYPE_CLASS_NUMBER);v.addView(t);v.addView(a);new AlertDialog.Builder(this).setTitle("지출 추가").setView(v).setPositiveButton("저장",(d,w)->{int amount=0;try{amount=Integer.parseInt(a.getText().toString());}catch(Exception ignored){}if(amount<=0)return;prefs.edit().putInt("expense",prefs.getInt("expense",0)+amount).putString("moneyItems",prefs.getString("moneyItems","")+t.getText().toString()+" · -"+formatWon(amount)+"|").apply();money();}).setNegativeButton("취소",null).show();}
 
-        Notification.Builder builder = Build.VERSION.SDK_INT >= 26
-                ? new Notification.Builder(this, CHANNEL_ID)
-                : new Notification.Builder(this);
-
-        Notification.BigTextStyle style = new Notification.BigTextStyle()
-                .bigText(text == null ? "새로운 알림이 있어요." : text);
-
-        builder.setSmallIcon(R.drawable.ic_launcher)
-                .setContentTitle(title == null ? "LifeKit" : title)
-                .setContentText(text == null ? "새로운 알림이 있어요." : text)
-                .setStyle(style)
-                .setAutoCancel(true)
-                .setColor(Color.rgb(49, 130, 246))
-                .setVibrate(new long[]{0, 70, 45, 70});
-
-        getSystemService(NotificationManager.class)
-                .notify((int) (System.currentTimeMillis() & 0x7fffffff), builder.build());
-    }
-
-    public void vibrateShort() {
-        Vibrator vibrator = Build.VERSION.SDK_INT >= 31
-                ? ((VibratorManager) getSystemService(VIBRATOR_MANAGER_SERVICE)).getDefaultVibrator()
-                : (Vibrator) getSystemService(VIBRATOR_SERVICE);
-        if (Build.VERSION.SDK_INT >= 26) {
-            vibrator.vibrate(VibrationEffect.createOneShot(45, VibrationEffect.DEFAULT_AMPLITUDE));
-        } else {
-            vibrator.vibrate(45);
-        }
-    }
-
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
-        if (requestCode == LOCATION_REQ) {
-            boolean granted = hasLocation();
-            if (pendingGeoCallback != null) {
-                pendingGeoCallback.invoke(pendingGeoOrigin, granted, false);
-                pendingGeoCallback = null;
-                pendingGeoOrigin = null;
-            }
-            if (!granted) {
-                Toast.makeText(this, "GPS 기능을 사용하려면 위치 권한이 필요합니다.", Toast.LENGTH_LONG).show();
-            }
-            requestNotificationPermission();
-        } else if (requestCode == NOTIFICATION_REQ
-                && Build.VERSION.SDK_INT >= 33
-                && !hasNotificationPermission()) {
-            Toast.makeText(this, "알림 권한을 허용하면 LifeKit 알림을 받을 수 있어요.", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private boolean hasNotificationPermission() {
-        return Build.VERSION.SDK_INT < 33
-                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
-    }
-
-    @Override public void onBackPressed() {
-        if (webView.canGoBack()) webView.goBack();
-        else super.onBackPressed();
-    }
-
-    @Override protected void onDestroy() {
-        if (webView != null) webView.destroy();
-        super.onDestroy();
-    }
+    private void showSettings(){LinearLayout v=new LinearLayout(this);v.setOrientation(LinearLayout.VERTICAL);v.setPadding(dp(20),0,dp(20),0);EditText n=new EditText(this);n.setHint("닉네임");n.setText(prefs.getString("name",""));EditText k=new EditText(this);k.setHint("NEIS Open API Key");k.setText(prefs.getString("neisKey","sample"));v.addView(n);v.addView(k);new AlertDialog.Builder(this).setTitle("LifeKit 설정").setView(v).setPositiveButton("저장",(d,w)->{prefs.edit().putString("name",n.getText().toString().trim()).putString("neisKey",k.getText().toString().trim()).apply();home();toast("설정을 저장했어요.");}).setNegativeButton("취소",null).show();}
+    private void createNotificationChannel(){if(Build.VERSION.SDK_INT>=26){NotificationChannel c=new NotificationChannel(CHANNEL_ID,"LifeKit 알림",NotificationManager.IMPORTANCE_DEFAULT);c.setDescription("학교, 습관, 생활 알림");c.enableVibration(true);c.setVibrationPattern(new long[]{0,70,45,70});c.setLightColor(Color.rgb(49,130,246));((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(c);}}
+    private void requestNeededPermissions(){ArrayList<String> p=new ArrayList<>();if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)p.add(Manifest.permission.POST_NOTIFICATIONS);if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED)p.add(Manifest.permission.ACCESS_FINE_LOCATION);if(checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)!=PackageManager.PERMISSION_GRANTED)p.add(Manifest.permission.ACCESS_COARSE_LOCATION);if(!p.isEmpty())requestPermissions(p.toArray(new String[0]),REQ_PERMS);}
+    private void requestLocationPermission(){requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},REQ_PERMS);}private boolean hasLocation(){return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED||checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)==PackageManager.PERMISSION_GRANTED;}
+    private String httpGet(String s)throws Exception{HttpURLConnection c=(HttpURLConnection)new URL(s).openConnection();c.setConnectTimeout(12000);c.setReadTimeout(12000);c.setRequestMethod("GET");try(InputStream in=c.getInputStream();BufferedReader br=new BufferedReader(new InputStreamReader(in,"UTF-8"))){StringBuilder b=new StringBuilder();String l;while((l=br.readLine())!=null)b.append(l);return b.toString();}finally{c.disconnect();}}
+    private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();vibrate();}
+    private void vibrate(){Vibrator v=Build.VERSION.SDK_INT>=31?((VibratorManager)getSystemService(VIBRATOR_MANAGER_SERVICE)).getDefaultVibrator():(Vibrator)getSystemService(VIBRATOR_SERVICE);if(Build.VERSION.SDK_INT>=26)v.vibrate(VibrationEffect.createOneShot(45,VibrationEffect.DEFAULT_AMPLITUDE));else v.vibrate(45);}
+    @Override protected void onResume(){super.onResume();if(mapView!=null)mapView.onResume();}
+    @Override protected void onPause(){if(mapView!=null)mapView.onPause();super.onPause();}
+    @Override protected void onDestroy(){if(tracking){try{locationManager.removeUpdates(locationListener);}catch(Exception ignored){}}executor.shutdownNow();super.onDestroy();}
 }
